@@ -1,0 +1,47 @@
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+[package]
+name = "justrans"
+version.workspace = true
+authors = ["Wormarz <wormarz@outlook.com>"]
+license = "Apache"
+description = "An easy-to-use file exchanger."
+homepage = ""
+repository = ""
+readme = "README.md"
+edition.workspace = true
+
+[workspace.dependencies]
+log = "0.4.22"
+anyhow = "1.0.95"
+slint = "1.8.0"
+
+[dependencies]
+component = {path = "./utils/component"}
+env_logger = "0.11.6"
+slint.workspace = true
+log.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+assert_cmd = "2.0"
+
+[build-dependencies]
+slint-build = "1.8.0"
+
+[[bin]]
+name = "template"
+bench = false
+path = "src/main.rs"
+
+[profile.release]
+panic = "abort"
+strip = true
+lto = true
+
+[workspace]
+members = ["utils/component", ]
+
+[features]
