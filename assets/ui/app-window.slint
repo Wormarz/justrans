@@ -1,18 +1,217 @@
-import { Button, VerticalBox } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, ListView, LineEdit, ScrollView, Spinner } from "std-widgets.slint";
+
+struct FileInfo {
+    name: string,
+    size: string,
+    path: string,
+}
+
+component FileItem inherits Rectangle {
+    in property <FileInfo> file;
+    in property <bool> selected;
+    callback clicked();
+    
+    height: 40px;
+    border-radius: 4px;
+    background: selected ? #e0e0e0 : transparent;
+    
+    HorizontalBox {
+        padding: 8px;
+        spacing: 8px;
+        
+        Text {
+            text: file.name;
+            vertical-alignment: center;
+            horizontal-alignment: left;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        Rectangle {
+            width: 0px;
+        }
+        
+        Text {
+            text: file.size;
+            vertical-alignment: center;
+            horizontal-alignment: right;
+            font-size: 12px;
+            color: #666;
+        }
+    }
+    
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
 
 export component AppWindow inherits Window {
-    in-out property <int> counter: 42;
-    callback request-increase-value();
+    title: "JusTrans - File Exchange";
+    min-width: 600px;
+    min-height: 500px;
+    
+    // Properties
+    in-out property <string> server-url: "http://192.168.1.100:8080";
+    in-out property <string> qr-code-path: "";
+    in-out property <[FileInfo]> files: [];
+    in-out property <int> selected-file: -1;
+    in-out property <bool> server-running: false;
+    in-out property <string> status-message: "Server not running";
+    in-out property <bool> is-loading: false;
+    
+    // Callbacks
+    callback start-server();
+    callback stop-server();
+    callback add-files();
+    callback remove-file(int);
+    callback open-file(int);
+    callback copy-url();
+    
     VerticalBox {
-        Text {
-            text: "Counter: \{root.counter}";
-        }
-
-        Button {
-            text: "Increase value";
-            clicked => {
-                root.request-increase-value();
+        padding: 16px;
+        spacing: 16px;
+        
+        // Server control and status
+        HorizontalBox {
+            spacing: 16px;
+            
+            VerticalBox {
+                spacing: 8px;
+                
+                Text {
+                    text: "Server URL";
+                    font-size: 14px;
+                    font-weight: 500;
+                }
+                
+                HorizontalBox {
+                    spacing: 8px;
+                    
+                    LineEdit {
+                        text: root.server-url;
+                        read-only: true;
+                        width: 100%;
+                    }
+                    
+                    Button {
+                        text: "Copy";
+                        clicked => { root.copy-url(); }
+                    }
+                }
+                
+                HorizontalBox {
+                    spacing: 8px;
+                    
+                    Button {
+                        text: root.server-running ? "Stop Server" : "Start Server";
+                        primary: !root.server-running;
+                        clicked => {
+                            if (root.server-running) {
+                                root.stop-server();
+                            } else {
+                                root.start-server();
+                            }
+                        }
+                    }
+                    
+                    Text {
+                        text: root.status-message;
+                        vertical-alignment: center;
+                        color: root.server-running ? #4caf50 : #f44336;
+                    }
+                    
+                    if (root.is-loading) : Spinner {
+                        width: 24px;
+                        height: 24px;
+                    }
+                }
             }
+            
+            // QR Code
+            if (root.qr-code-path != "") : Rectangle {
+                width: 120px;
+                height: 120px;
+                
+                Image {
+                    source: @image-url("../qrcode/qrcode.png");
+                    width: 100%;
+                    height: 100%;
+                }
+            }
+        }
+        
+        // Files list
+        VerticalBox {
+            spacing: 8px;
+            
+            HorizontalBox {
+                spacing: 8px;
+                
+                Text {
+                    text: "Files";
+                    font-size: 16px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                
+                Rectangle { width: 0px; }
+                
+                Button {
+                    text: "Add Files";
+                    clicked => { root.add-files(); }
+                }
+                
+                Button {
+                    text: "Remove";
+                    enabled: root.selected-file >= 0;
+                    clicked => {
+                        if (root.selected-file >= 0) {
+                            root.remove-file(root.selected-file);
+                        }
+                    }
+                }
+            }
+            
+            Rectangle {
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: #ddd;
+                background: #f9f9f9;
+                height: 300px;
+                
+                if (root.files.length <= 0) : Text {
+                    text: "No files added yet. Click 'Add Files' to begin.";
+                    color: #888;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+                
+                if (root.files.length > 0) : ScrollView {
+                    ListView {
+                        for file[i] in root.files : FileItem {
+                            file: file;
+                            selected: i == root.selected-file;
+                            clicked => {
+                                root.selected-file = i;
+                                root.open-file(i);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Footer
+        Text {
+            text: "Drag and drop files here to add them";
+            font-size: 12px;
+            color: #666;
+            horizontal-alignment: center;
         }
     }
 }
