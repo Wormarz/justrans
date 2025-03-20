@@ -267,6 +267,11 @@ async fn upload_file(
         {
             let mut file_list = state.file_list.lock().unwrap();
             file_list.add_file(file_info.clone());
+            log::info!(
+                "Web upload: Added file '{}' to server file list. Total files: {}",
+                file_info.name,
+                file_list.files.len()
+            );
         }
 
         return Ok(Json(file_info));
