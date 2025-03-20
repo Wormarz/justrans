@@ -86,6 +86,10 @@ impl FileServer {
     pub fn set_file_list(&self, file_list: FileList) {
         let mut list = self.state.file_list.lock().unwrap();
         *list = file_list;
+        log::info!(
+            "Server file list updated: {} files available",
+            list.files.len()
+        );
     }
 
     pub fn get_file_list(&self) -> FileList {

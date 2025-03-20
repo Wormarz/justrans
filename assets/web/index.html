@@ -198,9 +198,14 @@
             const selectFileBtn = document.getElementById('selectFileBtn');
             const fileList = document.getElementById('fileList');
             const statusEl = document.getElementById('status');
+            let lastFileCount = 0;
+            let pollingInterval;
 
             // Load files on page load
             loadFiles();
+
+            // Set up automatic polling to check for file changes every 2 seconds
+            startPolling();
 
             // Handle file selection button
             selectFileBtn.addEventListener('click', function () {
@@ -232,6 +237,49 @@
                     uploadFiles(e.dataTransfer.files);
                 }
             });
+
+            // Function to start polling for file changes
+            function startPolling() {
+                // Clear any existing polling
+                if (pollingInterval) {
+                    clearInterval(pollingInterval);
+                }
+
+                // Poll every 2 seconds
+                pollingInterval = setInterval(checkForFileChanges, 2000);
+
+                // Stop polling if the page is hidden to save resources
+                document.addEventListener('visibilitychange', function () {
+                    if (document.visibilityState === 'hidden') {
+                        clearInterval(pollingInterval);
+                    } else {
+                        pollingInterval = setInterval(checkForFileChanges, 2000);
+                    }
+                });
+            }
+
+            // Function to check for file changes
+            function checkForFileChanges() {
+                fetch('/api/files')
+                    .then(response => response.json())
+                    .then(data => {
+                        const newFileCount = data.files ? data.files.length : 0;
+
+                        // Update the file list if the number of files has changed
+                        if (newFileCount !== lastFileCount) {
+                            updateFileList(data);
+                            lastFileCount = newFileCount;
+
+                            // Show a notification if files were added (and not just on first load)
+                            if (lastFileCount > 0 && newFileCount > lastFileCount) {
+                                showStatus('New files available!', 'success');
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error checking for file changes:', error);
+                    });
+            }
 
             // Function to upload files
             function uploadFiles(files) {
@@ -272,51 +320,57 @@
                 fetch('/api/files')
                     .then(response => response.json())
                     .then(data => {
-                        fileList.innerHTML = '';
-
-                        if (data.files && data.files.length > 0) {
-                            data.files.forEach(file => {
-                                const fileItem = document.createElement('div');
-                                fileItem.className = 'file-item';
-
-                                const fileInfo = document.createElement('div');
-                                fileInfo.className = 'file-info';
-
-                                const fileName = document.createElement('div');
-                                fileName.className = 'file-name';
-                                fileName.textContent = file.name;
-
-                                const fileSize = document.createElement('div');
-                                fileSize.className = 'file-size';
-                                fileSize.textContent = formatFileSize(file.size);
-
-                                fileInfo.appendChild(fileName);
-                                fileInfo.appendChild(fileSize);
-
-                                const fileActions = document.createElement('div');
-                                fileActions.className = 'file-actions';
-
-                                const downloadBtn = document.createElement('button');
-                                downloadBtn.className = 'download-btn';
-                                downloadBtn.innerHTML = '⬇️ Download';
-                                downloadBtn.addEventListener('click', function () {
-                                    window.location.href = `/api/files/${file.id}`;
-                                });
-
-                                fileActions.appendChild(downloadBtn);
-
-                                fileItem.appendChild(fileInfo);
-                                fileItem.appendChild(fileActions);
-
-                                fileList.appendChild(fileItem);
-                            });
-                        } else {
-                            fileList.innerHTML = '<p>No files available</p>';
-                        }
+                        updateFileList(data);
+                        lastFileCount = data.files ? data.files.length : 0;
                     })
                     .catch(error => {
                         showStatus('Error loading files: ' + error.message, 'error');
                     });
+            }
+
+            // Function to update the file list UI
+            function updateFileList(data) {
+                fileList.innerHTML = '';
+
+                if (data.files && data.files.length > 0) {
+                    data.files.forEach(file => {
+                        const fileItem = document.createElement('div');
+                        fileItem.className = 'file-item';
+
+                        const fileInfo = document.createElement('div');
+                        fileInfo.className = 'file-info';
+
+                        const fileName = document.createElement('div');
+                        fileName.className = 'file-name';
+                        fileName.textContent = file.name;
+
+                        const fileSize = document.createElement('div');
+                        fileSize.className = 'file-size';
+                        fileSize.textContent = formatFileSize(file.size);
+
+                        fileInfo.appendChild(fileName);
+                        fileInfo.appendChild(fileSize);
+
+                        const fileActions = document.createElement('div');
+                        fileActions.className = 'file-actions';
+
+                        const downloadBtn = document.createElement('button');
+                        downloadBtn.className = 'download-btn';
+                        downloadBtn.innerHTML = '⬇️ Download';
+                        downloadBtn.addEventListener('click', function () {
+                            window.location.href = `/api/files/${file.id}`;
+                        });
+
+                        fileActions.appendChild(downloadBtn);
+
+                        fileItem.appendChild(fileInfo);
+                        fileItem.appendChild(fileActions);
+
+                        fileList.appendChild(fileItem);
+                    });
+                } else {
+                    fileList.innerHTML = '<p>No files available</p>';
+                }
             }
 
             // Function to format file size

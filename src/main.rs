@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use log::{error, info};
+use rfd::FileDialog;
 use slint::SharedString;
 use tokio::runtime::Runtime;
 
@@ -93,17 +94,31 @@ fn main() -> Result<()> {
                         if let Ok(qr_path) = qr_result {
                             // Convert to relative path for Slint
                             let relative_path = qr_path.to_string_lossy().to_string();
+                            info!("QR code generated successfully at path: {:?}", qr_path);
+                            info!("Setting QR code path in UI: {}", &relative_path);
+
+                            // Check if file exists
+                            if std::path::Path::new(&qr_path).exists() {
+                                info!("QR code file exists at path: {:?}", qr_path);
+                            } else {
+                                error!("QR code file DOES NOT EXIST at path: {:?}", qr_path);
+                            }
 
                             slint::invoke_from_event_loop(move || {
                                 let ui = ui_handle_clone.unwrap();
                                 ui.set_server_url(SharedString::from(server_info.url.clone()));
                                 ui.set_server_running(true);
                                 ui.set_status_message(SharedString::from("Server running"));
-                                ui.set_qr_code_path(SharedString::from(relative_path));
+                                ui.set_qr_code_path(SharedString::from(relative_path.clone()));
                                 ui.set_is_loading(false);
+                                info!(
+                                    "UI updated with server_running=true and QR code path: {}",
+                                    relative_path
+                                );
                             })
                             .unwrap();
                         } else {
+                            error!("Failed to generate QR code: {:?}", qr_result.err());
                             slint::invoke_from_event_loop(move || {
                                 let ui = ui_handle_clone.unwrap();
                                 ui.set_server_url(SharedString::from(server_info.url.clone()));
@@ -190,28 +205,41 @@ fn main() -> Result<()> {
         move || {
             let ui = ui_handle.unwrap();
 
-            // Since we don't have file dialog support, use a hardcoded example file
-            info!("Add files button clicked. In a real app, this would open a file dialog.");
+            // Open a file dialog to select files
+            if let Some(files) = FileDialog::new()
+                .set_title("Select files to share")
+                .set_directory(std::env::current_dir().unwrap_or_default())
+                .pick_files()
+            {
+                // First collect all new files
+                let mut new_file_infos = Vec::new();
+                for file_path in files {
+                    if let Ok(file_info) = ModelFileInfo::new(file_path) {
+                        new_file_infos.push(file_info);
+                    }
+                }
 
-            // For testing, we can add a sample file
-            let example_path = std::env::current_dir()
-                .unwrap_or_default()
-                .join("README.md");
-            if example_path.exists() {
-                if let Ok(file_info) = ModelFileInfo::new(example_path) {
-                    // Add file to list
-                    {
-                        let mut file_list = app_data.file_list.lock().unwrap();
-                        file_list.add_file(file_info.clone());
-
-                        // Update server file list
-                        let file_server = app_data.file_server.lock().unwrap();
-                        file_server.set_file_list(file_list.clone());
+                // Update both the file list and server in one transaction
+                {
+                    // Update local file list
+                    let mut file_list = app_data.file_list.lock().unwrap();
+                    for file_info in new_file_infos {
+                        file_list.add_file(file_info);
                     }
 
-                    // Update UI
-                    update_ui_file_list(&ui, &app_data);
+                    // Update server file list immediately to ensure web clients get the update
+                    let file_server = app_data.file_server.lock().unwrap();
+                    file_server.set_file_list(file_list.clone());
+
+                    // Log the update
+                    info!(
+                        "File list updated: {} files available",
+                        file_list.files.len()
+                    );
                 }
+
+                // Update UI
+                update_ui_file_list(&ui, &app_data);
             }
         }
     });
@@ -223,13 +251,21 @@ fn main() -> Result<()> {
         move |index| {
             let ui = ui_handle.unwrap();
 
-            // Remove file from list
+            // Remove file from list and update server in one transaction
             {
                 let mut file_list = app_data.file_list.lock().unwrap();
-                if let Some(_) = file_list.remove_file(index as usize) {
-                    // Update server file list
+                if let Some(removed_file) = file_list.remove_file(index as usize) {
+                    // Update server file list immediately to ensure web clients get the update
                     let file_server = app_data.file_server.lock().unwrap();
                     file_server.set_file_list(file_list.clone());
+
+                    // Log the update
+                    info!(
+                        "File removed: {} ('{}') - {} files remaining",
+                        removed_file.id,
+                        removed_file.name,
+                        file_list.files.len()
+                    );
                 }
             }
 
