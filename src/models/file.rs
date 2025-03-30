@@ -77,14 +77,6 @@ impl FileList {
     pub fn get_file_by_id(&self, id: &str) -> Option<&FileInfo> {
         self.files.iter().find(|f| f.id == id)
     }
-
-    pub fn len(&self) -> usize {
-        self.files.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.files.is_empty()
-    }
 }
 
 impl Default for FileList {
