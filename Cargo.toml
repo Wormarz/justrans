@@ -28,6 +28,7 @@ image = "0.24.9"
 mime_guess = "2.0.4"
 uuid = { version = "1.7.0", features = ["v4"] }
 rfd = "0.14.0"
+open = "3.2.0"
 
 [dependencies]
 component = {path = "./utils/component"}
@@ -46,6 +47,7 @@ image.workspace = true
 mime_guess.workspace = true
 uuid.workspace = true
 rfd.workspace = true
+open.workspace = true
 
 [dev-dependencies]
 assert_cmd = "2.0"

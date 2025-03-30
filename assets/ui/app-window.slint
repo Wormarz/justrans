@@ -7,61 +7,13 @@ struct FileInfo {
     id: string,
 }
 
-component FileItem inherits Rectangle {
-    in property <FileInfo> file;
-    in property <bool> selected;
-    callback clicked();
-    callback download();
-    
-    height: 40px;
-    border-radius: 4px;
-    background: selected ? #e0e0e0 : transparent;
-    
-    HorizontalBox {
-        padding: 8px;
-        spacing: 8px;
-        
-        Text {
-            text: file.name;
-            vertical-alignment: center;
-            horizontal-alignment: left;
-            font-size: 14px;
-            font-weight: 500;
-        }
-        
-        Rectangle {
-            width: 0px;
-        }
-        
-        Text {
-            text: file.size;
-            vertical-alignment: center;
-            horizontal-alignment: right;
-            font-size: 12px;
-            color: #666;
-        }
-        
-        Button {
-            text: "⬇️";
-            width: 24px;
-            height: 24px;
-            clicked => { root.download(); }
-        }
-    }
-    
-    TouchArea {
-        width: 100%;
-        height: 100%;
-        clicked => {
-            root.clicked();
-        }
-    }
-}
-
 export component AppWindow inherits Window {
     title: "JusTrans - File Exchange";
-    min-width: 600px;
-    min-height: 500px;
+    min-width: 500px;
+    min-height: 600px;
+    max-width: 500px;
+    max-height: 600px;
+    background: white;
     
     // Properties
     in-out property <string> server-url: "http://192.168.1.100:8080";
@@ -81,178 +33,119 @@ export component AppWindow inherits Window {
     callback download-file(int);
     callback copy-url();
     callback refresh-files();
+    callback open-url();
     
     VerticalBox {
-        padding: 16px;
-        spacing: 16px;
+        padding: 20px;
+        spacing: 20px;
         
-        // Server control and status
-        HorizontalBox {
-            spacing: 16px;
-            alignment: space-between;
-            
-            VerticalBox {
-                spacing: 8px;
-                width: 100%;
-                
-                Text {
-                    text: "Server URL";
-                    font-size: 14px;
-                    font-weight: 500;
-                }
-                
-                HorizontalBox {
-                    spacing: 8px;
-                    
-                    LineEdit {
-                        text: root.server-url;
-                        read-only: true;
-                        width: 100%;
-                    }
-                    
-                    Button {
-                        text: "Copy";
-                        clicked => { root.copy-url(); }
-                    }
-                }
-                
-                HorizontalBox {
-                    spacing: 8px;
-                    
-                    Button {
-                        text: root.server-running ? "Stop Server" : "Start Server";
-                        primary: !root.server-running;
-                        clicked => {
-                            if (root.server-running) {
-                                root.stop-server();
-                            } else {
-                                root.start-server();
-                            }
-                        }
-                    }
-                    
-                    Text {
-                        text: root.status-message;
-                        vertical-alignment: center;
-                        color: root.server-running ? #4caf50 : #f44336;
-                    }
-                    
-                    if (root.is-loading) : Spinner {
-                        width: 24px;
-                        height: 24px;
-                    }
-                }
-            }
-            
-            // QR Code
-            Rectangle {
-                min-width: 120px;
-                height: 120px;
-                border-width: 1px;
-                border-color: #ddd;
-                background: #f9f9f9;
-                
-                if (root.server-running) : VerticalBox {
-                    alignment: center;
-                    
-                    Image {
-                        source: @image-url("../qrcode/qrcode.png");
-                        width: 100px;
-                        height: 100px;
-                    }
-                }
-                
-                if (!root.server-running) : Text {
-                    text: "QR Code will appear here";
-                    color: #888;
-                    font-size: 12px;
-                    vertical-alignment: center;
-                    horizontal-alignment: center;
-                }
-            }
-        }
-        
-        // Files list
-        VerticalBox {
-            spacing: 8px;
+        // URL section
+        Rectangle {
+            height: 60px;
+            border-width: 1px;
+            border-color: #ddd;
+            border-radius: 8px;
             
             HorizontalBox {
-                spacing: 8px;
+                padding: 10px;
                 
                 Text {
-                    text: "Files";
-                    font-size: 16px;
-                    font-weight: 600;
+                    text: root.server-url;
+                    font-size: 18px;
+                    color: #0066cc;
+                    font-weight: 500;
                     vertical-alignment: center;
-                }
-                
-                Rectangle { width: 0px; }
-                
-                Button {
-                    text: "Add Files";
-                    clicked => { root.add-files(); }
-                }
-                
-                Button {
-                    text: "Refresh";
-                    clicked => { root.refresh-files(); }
-                    enabled: root.server-running;
-                }
-                
-                Button {
-                    text: "Remove";
-                    enabled: root.selected-file >= 0;
-                    clicked => {
-                        if (root.selected-file >= 0) {
-                            root.remove-file(root.selected-file);
-                        }
+                    horizontal-stretch: 1;
+                    
+                    Text {
+                        x: 0;
+                        y: parent.height;
+                        text: "_____________________________________________________";
+                        color: #0066cc;
+                        font-size: 18px;
                     }
                 }
             }
             
-            Rectangle {
-                border-radius: 4px;
-                border-width: 1px;
-                border-color: #ddd;
-                background: #f9f9f9;
-                height: 300px;
+            TouchArea {
+                clicked => {
+                    root.open-url();
+                }
+            }
+        }
+        
+        // QR Code Area
+        Rectangle {
+            height: 300px;
+            border-width: 1px;
+            border-color: #ddd;
+            border-radius: 8px;
+            
+            if (root.server-running) : VerticalBox {
+                alignment: center;
+                spacing: 10px;
                 
-                if (root.files.length <= 0) : Text {
-                    text: "No files added yet. Click 'Add Files' to begin.";
+                Image {
+                    source: @image-url("../qrcode/qrcode.png");
+                    width: 240px;
+                    height: 240px;
+                    image-fit: contain;
+                }
+            }
+            
+            if (!root.server-running) : VerticalBox {
+                alignment: center;
+                
+                Text {
+                    text: "QR Code will appear here";
                     color: #888;
-                    font-size: 14px;
-                    vertical-alignment: center;
+                    font-size: 16px;
                     horizontal-alignment: center;
                 }
+            }
+        }
+        
+        // Start Button
+        Rectangle {
+            height: 120px;
+            
+            Rectangle {
+                width: 120px;
+                height: 120px;
+                border-radius: 60px;
+                border-width: 2px;
+                border-color: #ddd;
+                background: root.server-running ? #f44336 : #4caf50;
+                x: parent.width / 2 - self.width / 2;
+                y: 0;
                 
-                if (root.files.length > 0) : ScrollView {
-                    ListView {
-                        for file[i] in root.files : FileItem {
-                            file: file;
-                            selected: i == root.selected-file;
-                            clicked => {
-                                root.selected-file = i;
-                                root.open-file(i);
-                            }
-                            download => {
-                                root.download-file(i);
-                            }
+                Text {
+                    text: root.server-running ? "Stop" : "Start";
+                    color: white;
+                    font-size: 32px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                
+                TouchArea {
+                    clicked => {
+                        if (root.server-running) {
+                            root.stop-server();
+                        } else {
+                            root.start-server();
                         }
                     }
                 }
             }
         }
         
-        // Footer
-        HorizontalBox {
-            alignment: center;
-            
-            Text {
-                text: "Auto-refresh every 5 seconds" + (root.server-running ? " enabled" : " disabled");
-                font-size: 12px;
-                color: root.server-running ? #4caf50 : #666;
-                horizontal-alignment: center;
-            }
+        // Status text
+        if (root.is-loading || root.server-running) : Text {
+            text: root.status-message;
+            horizontal-alignment: center;
+            color: root.server-running ? #4caf50 : #f44336;
+            font-size: 14px;
         }
     }
 }

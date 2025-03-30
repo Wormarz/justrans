@@ -5,15 +5,20 @@ use qrcode::QrCode;
 use std::path::PathBuf;
 
 pub fn generate_qr_code(data: &str, output_path: &PathBuf) -> Result<()> {
-    // Create QR code
-    let code = QrCode::new(data)?;
+    // Create QR code with error correction level M (15%)
+    let code = QrCode::with_error_correction_level(data, qrcode::EcLevel::M)?;
 
-    // Render the QR code as an image
+    // Render the QR code as an image with larger dimensions
     let image = code
         .render::<Luma<u8>>()
         .quiet_zone(true)
-        .module_dimensions(6, 6)
+        .module_dimensions(10, 10) // Increased size
         .build();
+
+    // Ensure the directory exists
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
 
     // Save the image
     info!("Saving QR code to: {:?}", output_path);
@@ -47,6 +52,12 @@ pub fn generate_qr_code_for_url(url: &str) -> Result<PathBuf> {
     // Generate QR code
     generate_qr_code(url, &output_path)?;
 
-    // Return the full path for reference, though Slint UI uses a hardcoded path
+    // Verify the file was created
+    if !output_path.exists() {
+        error!("QR code file was not created at: {:?}", output_path);
+        return Err(anyhow::anyhow!("QR code file was not created"));
+    }
+
+    info!("QR code file verified at: {:?}", output_path);
     Ok(output_path)
 }
