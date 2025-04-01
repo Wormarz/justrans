@@ -2,18 +2,16 @@ mod models;
 mod server;
 mod utils;
 
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use log::{error, info};
-use rfd::FileDialog;
-use slint::SharedString;
+use models::FileList;
+use slint::{ComponentHandle, SharedString};
 use tokio::runtime::Runtime;
-
-use models::{FileInfo as ModelFileInfo, FileList};
-use server::FileServer;
 use utils::generate_qr_code_for_url;
+
+use server::FileServer;
 
 slint::include_modules!();
 
@@ -270,214 +268,6 @@ fn main() -> Result<()> {
         }
     });
 
-    // Handle add files
-    ui.on_add_files({
-        let ui_handle = ui.as_weak();
-        let app_data = app_data.clone();
-        move || {
-            let ui = ui_handle.unwrap();
-
-            // Open a file dialog to select files
-            if let Some(files) = FileDialog::new()
-                .set_title("Select files to share")
-                .set_directory(std::env::current_dir().unwrap_or_default())
-                .pick_files()
-            {
-                // First collect all new files
-                let mut new_file_infos = Vec::new();
-                for file_path in files {
-                    if let Ok(file_info) = ModelFileInfo::new(file_path) {
-                        new_file_infos.push(file_info);
-                    }
-                }
-
-                // Update both the file list and server in one transaction
-                {
-                    // Update local file list
-                    let mut file_list = app_data.file_list.lock().unwrap();
-                    for file_info in new_file_infos {
-                        file_list.add_file(file_info);
-                    }
-
-                    // Update server file list immediately to ensure web clients get the update
-                    let file_server = app_data.file_server.lock().unwrap();
-                    file_server.set_file_list(file_list.clone());
-
-                    // Log the update
-                    info!(
-                        "File list updated: {} files available",
-                        file_list.files.len()
-                    );
-                }
-
-                // Update UI
-                update_ui_file_list(&ui, &app_data);
-            }
-        }
-    });
-
-    // Handle remove file
-    ui.on_remove_file({
-        let ui_handle = ui.as_weak();
-        let app_data = app_data.clone();
-        move |index| {
-            let ui = ui_handle.unwrap();
-
-            // Remove file from list and update server in one transaction
-            {
-                let mut file_list = app_data.file_list.lock().unwrap();
-                if let Some(removed_file) = file_list.remove_file(index as usize) {
-                    // Update server file list immediately to ensure web clients get the update
-                    let file_server = app_data.file_server.lock().unwrap();
-                    file_server.set_file_list(file_list.clone());
-
-                    // Log the update
-                    info!(
-                        "File removed: {} ('{}') - {} files remaining",
-                        removed_file.id,
-                        removed_file.name,
-                        file_list.files.len()
-                    );
-                }
-            }
-
-            // Update UI
-            update_ui_file_list(&ui, &app_data);
-            ui.set_selected_file(-1);
-        }
-    });
-
-    // Handle open file
-    ui.on_open_file({
-        let app_data = app_data.clone();
-        move |index| {
-            let file_list = app_data.file_list.lock().unwrap();
-            if let Some(file_info) = file_list.get_file(index as usize) {
-                if let Err(err) = open_file(&file_info.path) {
-                    error!("Failed to open file: {}", err);
-                }
-            }
-        }
-    });
-
-    // Handle copy URL
-    ui.on_copy_url({
-        let ui_handle = ui.as_weak();
-        move || {
-            let ui = ui_handle.unwrap();
-            let url = ui.get_server_url().to_string();
-
-            // Since we don't have clipboard support, just log the URL
-            info!("Server URL: {}", url);
-        }
-    });
-
-    // Handle download file
-    ui.on_download_file({
-        let app_data = app_data.clone();
-        move |index| {
-            let file_list = app_data.file_list.lock().unwrap();
-            if let Some(file_info) = file_list.get_file(index as usize) {
-                let server_info = app_data.file_server.lock().unwrap().get_server_info();
-                if server_info.running {
-                    let download_url = format!("{}/api/files/{}", server_info.url, file_info.id);
-                    info!("Downloading file from: {}", download_url);
-
-                    // Open download URL in default browser
-                    #[cfg(target_os = "windows")]
-                    {
-                        use std::process::Command;
-                        Command::new("cmd")
-                            .args(["/C", "start", "", &download_url])
-                            .spawn()
-                            .expect("Failed to open browser");
-                    }
-
-                    #[cfg(target_os = "macos")]
-                    {
-                        use std::process::Command;
-                        Command::new("open")
-                            .arg(&download_url)
-                            .spawn()
-                            .expect("Failed to open browser");
-                    }
-
-                    #[cfg(target_os = "linux")]
-                    {
-                        use std::process::Command;
-                        Command::new("xdg-open")
-                            .arg(&download_url)
-                            .spawn()
-                            .expect("Failed to open browser");
-                    }
-                } else {
-                    error!("Cannot download file: Server is not running");
-                }
-            }
-        }
-    });
-
-    // Handle refresh files
-    ui.on_refresh_files({
-        let ui_handle = ui.as_weak();
-        let app_data = app_data.clone();
-        move || {
-            info!("Manual refresh: Checking for new files...");
-
-            // Get latest files from server to ensure UI is in sync with web uploads
-            let server_files = {
-                let file_server = app_data.file_server.lock().unwrap();
-                file_server.get_file_list()
-            };
-
-            // Update local file list with server's list
-            let update_needed = {
-                let mut local_file_list = app_data.file_list.lock().unwrap();
-
-                // Check for changes by comparing number of files
-                // and also check for differences in file IDs
-                let local_count = local_file_list.files.len();
-                let server_count = server_files.files.len();
-
-                // First, a simple count check
-                let count_changed = local_count != server_count;
-
-                // Then a more detailed check comparing file IDs
-                // This helps when files are removed from one side but total count remains the same
-                let ids_differ = if !count_changed && local_count > 0 {
-                    // Create sets of file IDs for easy comparison
-                    let local_ids: std::collections::HashSet<&String> =
-                        local_file_list.files.iter().map(|f| &f.id).collect();
-                    let server_ids: std::collections::HashSet<&String> =
-                        server_files.files.iter().map(|f| &f.id).collect();
-
-                    // Check if the sets are different
-                    local_ids != server_ids
-                } else {
-                    false
-                };
-
-                if count_changed || ids_differ {
-                    info!(
-                        "Manual refresh: Found file changes: local={}, server={}",
-                        local_count, server_count
-                    );
-                    *local_file_list = server_files;
-                    true
-                } else {
-                    info!("Manual refresh: No changes detected");
-                    false
-                }
-            };
-
-            // Update UI if needed
-            if update_needed {
-                let ui = ui_handle.unwrap();
-                update_ui_file_list(&ui, &app_data);
-            }
-        }
-    });
-
     // Handle URL click
     ui.on_open_url({
         let app_data = app_data.clone();
@@ -517,28 +307,4 @@ fn update_ui_file_list(ui: &AppWindow, app_data: &AppData) {
     }
 
     ui.set_files(slint::ModelRc::new(slint::VecModel::from(slint_files)));
-}
-
-fn open_file(path: &PathBuf) -> Result<()> {
-    #[cfg(target_os = "windows")]
-    {
-        use std::process::Command;
-        Command::new("cmd")
-            .args(["/C", "start", "", path.to_string_lossy().as_ref()])
-            .spawn()?;
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        use std::process::Command;
-        Command::new("open").arg(path).spawn()?;
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        use std::process::Command;
-        Command::new("xdg-open").arg(path).spawn()?;
-    }
-
-    Ok(())
 }

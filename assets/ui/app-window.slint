@@ -34,7 +34,6 @@ export component AppWindow inherits Window {
     callback copy-url();
     callback refresh-files();
     callback open-url();
-    
     VerticalBox {
         padding: 20px;
         spacing: 20px;
@@ -45,10 +44,8 @@ export component AppWindow inherits Window {
             border-width: 1px;
             border-color: #ddd;
             border-radius: 8px;
-            
             HorizontalBox {
                 padding: 10px;
-                
                 Text {
                     text: root.server-url;
                     font-size: 18px;
@@ -56,18 +53,11 @@ export component AppWindow inherits Window {
                     font-weight: 500;
                     vertical-alignment: center;
                     horizontal-stretch: 1;
-                    
-                    Text {
-                        x: 0;
-                        y: parent.height;
-                        text: "_____________________________________________________";
-                        color: #0066cc;
-                        font-size: 18px;
-                    }
                 }
             }
-            
+
             TouchArea {
+                mouse-cursor: MouseCursor.default;
                 clicked => {
                     root.open-url();
                 }
@@ -80,11 +70,9 @@ export component AppWindow inherits Window {
             border-width: 1px;
             border-color: #ddd;
             border-radius: 8px;
-            
-            if (root.server-running) : VerticalBox {
+            if (root.server-running): VerticalBox {
                 alignment: center;
                 spacing: 10px;
-                
                 Image {
                     source: @image-url("../qrcode/qrcode.png");
                     width: 240px;
@@ -92,10 +80,8 @@ export component AppWindow inherits Window {
                     image-fit: contain;
                 }
             }
-            
-            if (!root.server-running) : VerticalBox {
+            if (!root.server-running): VerticalBox {
                 alignment: center;
-                
                 Text {
                     text: "QR Code will appear here";
                     color: #888;
@@ -108,7 +94,6 @@ export component AppWindow inherits Window {
         // Start Button
         Rectangle {
             height: 120px;
-            
             Rectangle {
                 width: 120px;
                 height: 120px;
@@ -118,7 +103,6 @@ export component AppWindow inherits Window {
                 background: root.server-running ? #f44336 : #4caf50;
                 x: parent.width / 2 - self.width / 2;
                 y: 0;
-                
                 Text {
                     text: root.server-running ? "Stop" : "Start";
                     color: white;
@@ -127,7 +111,7 @@ export component AppWindow inherits Window {
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
-                
+
                 TouchArea {
                     clicked => {
                         if (root.server-running) {
@@ -141,7 +125,7 @@ export component AppWindow inherits Window {
         }
         
         // Status text
-        if (root.is-loading || root.server-running) : Text {
+        if (root.is-loading || root.server-running): Text {
             text: root.status-message;
             horizontal-alignment: center;
             color: root.server-running ? #4caf50 : #f44336;
