@@ -13,6 +13,9 @@ use utils::generate_qr_code_for_url;
 
 use server::FileServer;
 
+// Add this const to get version from Cargo.toml
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 slint::include_modules!();
 
 #[derive(Clone)]
@@ -54,6 +57,9 @@ fn main() -> Result<()> {
         ui.set_server_running(server_info.running);
         ui.set_status_message(SharedString::from("Server not running"));
     }
+
+    // Set up version information
+    ui.set_version(SharedString::from(VERSION));
 
     // Set up periodic refresh timer (every 5 seconds)
     let ui_handle_for_timer = ui.as_weak();
