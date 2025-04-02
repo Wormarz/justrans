@@ -1,15 +1,14 @@
 mod models;
 mod server;
-mod utils;
 
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use log::{error, info};
 use models::FileList;
+use qrcode::generate_qr_code_for_url;
 use slint::{ComponentHandle, SharedString};
 use tokio::runtime::Runtime;
-use utils::generate_qr_code_for_url;
 
 use server::FileServer;
 

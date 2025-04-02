@@ -1,9 +1,11 @@
 [package]
-name = "component"
+name = "qrcode"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
+qrcode = "0.13.0"
+image = "0.24.9"
 log.workspace = true
 anyhow.workspace = true
 
