@@ -175,11 +175,8 @@ export component AppWindow inherits Window {
             border-radius: 8px;
             if (root.server-running): VerticalBox {
                 alignment: center;
-                spacing: 10px;
                 Image {
                     source: @image-url("../qrcode/qrcode.png");
-                    width: 240px;
-                    height: 240px;
                     image-fit: contain;
                 }
             }
