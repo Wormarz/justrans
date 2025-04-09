@@ -31,6 +31,7 @@ open = "3.2.0"
 
 [dependencies]
 qrcode = {path = "./utils/qrcode"}
+logger = {path = "./utils/logger"}
 env_logger = "0.11.6"
 slint = { workspace = true, features = ["std"] }
 log.workspace = true
@@ -64,6 +65,6 @@ strip = true
 lto = true
 
 [workspace]
-members = ["utils/qrcode", ]
+members = ["utils/qrcode", "utils/logger"]
 
 [features]

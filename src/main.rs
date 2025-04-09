@@ -39,9 +39,14 @@ impl AppData {
 }
 
 fn main() -> Result<()> {
-    // Initialize logger
-    env_logger::init();
-    info!("Starting JusTrans...");
+    // Initialize logger with timestamped log file
+    let log_path = logger::timestamped_log_path()?;
+    logger::init(&log_path, log::Level::Info)?;
+
+    info!(
+        "Starting JusTrans v{} with log file at {:?}",
+        VERSION, log_path
+    );
 
     // Create app data
     let app_data = AppData::new()?;
