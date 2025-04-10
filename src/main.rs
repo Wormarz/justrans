@@ -1,3 +1,4 @@
+mod config;
 mod models;
 mod server;
 
@@ -10,6 +11,7 @@ use qrcode::generate_qr_code_for_url;
 use slint::{ComponentHandle, SharedString};
 use tokio::runtime::Runtime;
 
+use config::ConfigData;
 use server::FileServer;
 
 // Add this const to get version from Cargo.toml
@@ -22,6 +24,7 @@ struct AppData {
     file_server: Arc<Mutex<FileServer>>,
     file_list: Arc<Mutex<FileList>>,
     runtime: Arc<Runtime>,
+    config: ConfigData,
 }
 
 impl AppData {
@@ -30,10 +33,15 @@ impl AppData {
         let file_server = Arc::new(Mutex::new(FileServer::new()?));
         let file_list = Arc::new(Mutex::new(FileList::new()));
 
+        // Load settings using ConfigManager
+        let config_manager = config::ConfigManager::new("config/settings.yaml");
+        let config = config_manager.load()?;
+
         Ok(Self {
             file_server,
             file_list,
             runtime,
+            config,
         })
     }
 }
@@ -48,8 +56,14 @@ fn main() -> Result<()> {
         VERSION, log_path
     );
 
-    // Create app data
+    // Create app data (includes loading settings)
     let app_data = AppData::new()?;
+
+    // Log some settings info
+    info!(
+        "Loaded settings - Server port: {}, Theme: {}",
+        app_data.config.server.port, app_data.config.display.theme
+    );
 
     // Create UI
     let ui = AppWindow::new()?;

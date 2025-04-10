@@ -20,14 +20,14 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 
+use crate::config::ConfigData;
 use crate::models::{FileInfo, FileList};
-
-const DEFAULT_PORT: u16 = 8080;
 
 #[derive(Clone)]
 pub struct AppState {
     pub file_list: Arc<Mutex<FileList>>,
     pub temp_dir: PathBuf,
+    pub config: ConfigData,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,9 +46,13 @@ pub struct FileServer {
 
 impl FileServer {
     pub fn new() -> anyhow::Result<Self> {
+        // Load settings using ConfigManager
+        let config_manager = crate::config::ConfigManager::new("config/settings.yaml");
+        let config = config_manager.load()?;
+
         // Create temp directory for uploaded files
-        let temp_dir = std::env::temp_dir().join("justrans");
-        std::fs::create_dir_all(&temp_dir)?;
+        let storage_dir = PathBuf::from(&config.storage.storage_dir);
+        std::fs::create_dir_all(&storage_dir)?;
 
         // Get local IP address
         let ip = match local_ip() {
@@ -56,17 +60,21 @@ impl FileServer {
             Err(_) => "127.0.0.1".to_string(),
         };
 
+        // Get port from settings
+        let port = config.server.port;
+
         let server_info = ServerInfo {
-            url: format!("http://{}:{}", ip, DEFAULT_PORT),
+            url: format!("http://{}:{}", ip, port),
             ip,
-            port: DEFAULT_PORT,
+            port,
             running: false,
         };
 
         Ok(Self {
             state: AppState {
                 file_list: Arc::new(Mutex::new(FileList::new())),
-                temp_dir,
+                temp_dir: storage_dir,
+                config: config,
             },
             server_info: Arc::new(Mutex::new(server_info)),
             shutdown_tx: None,
@@ -121,11 +129,18 @@ impl FileServer {
             .layer(cors)
             .with_state(app_state);
 
-        // Get server address
+        // Get server address with binding based on settings
         let addr = {
             let info = server_info.lock().unwrap();
-            SocketAddr::new(info.ip.parse()?, info.port)
+            let bind_address = if self.state.config.server.bind_all_interfaces {
+                "0.0.0.0"
+            } else {
+                "127.0.0.1"
+            };
+            SocketAddr::new(bind_address.parse()?, info.port)
         };
+
+        log::info!("Starting server on {}", addr);
 
         // Create shutdown channel
         let (tx, rx) = oneshot::channel::<()>();
@@ -219,6 +234,9 @@ async fn upload_file(
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<Json<FileInfo>, StatusCode> {
+    // Get max upload size from settings (convert MB to bytes)
+    let max_upload_size = state.config.server.max_upload_size_mb * 1024 * 1024;
+
     while let Ok(Some(field)) = multipart.next_field().await {
         let file_name = match field.file_name() {
             Some(name) => name.to_string(),
@@ -235,6 +253,17 @@ async fn upload_file(
             Ok(data) => data,
             Err(_) => return Err(StatusCode::BAD_REQUEST),
         };
+
+        // Check file size against max upload size
+        if data.len() as u64 > max_upload_size {
+            log::error!(
+                "Upload of '{}' rejected: size {} exceeds maximum allowed size of {} bytes",
+                file_name,
+                data.len(),
+                max_upload_size
+            );
+            return Err(StatusCode::PAYLOAD_TOO_LARGE);
+        }
 
         // Create a unique file path
         let file_id = uuid::Uuid::new_v4().to_string();

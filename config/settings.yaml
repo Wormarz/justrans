@@ -1,0 +1,10 @@
+server:
+  port: 8080
+  bind_all_interfaces: true
+  max_upload_size_mb: 100
+display:
+  show_tooltips: true
+  theme: light
+storage:
+  storage_dir: uploads
+  use_relative_paths: true
