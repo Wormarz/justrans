@@ -78,7 +78,6 @@ export component AppWindow inherits Window {
     
     // Properties
     in-out property <string> server-url: "http://192.168.1.100:8080";
-    in-out property <string> qr-code-path: "";
     in-out property <[FileInfo]> files: [];
     in-out property <int> selected-file: -1;
     in-out property <bool> server-running: false;
@@ -97,6 +96,7 @@ export component AppWindow inherits Window {
     callback copy-url();
     callback refresh-files();
     callback open-url();
+    pure callback render-qr() -> image;
 
     VerticalBox {
         padding: 20px;
@@ -176,7 +176,7 @@ export component AppWindow inherits Window {
             if (root.server-running): VerticalBox {
                 alignment: center;
                 Image {
-                    source: @image-url("../qrcode/qrcode.png");
+                    source: render-qr();
                     image-fit: contain;
                 }
             }

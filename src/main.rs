@@ -190,40 +190,19 @@ fn main() -> Result<()> {
                             file_server.get_server_info()
                         };
 
-                        // Generate QR code first
-                        let qr_result = generate_qr_code_for_url(&server_info.url);
-                        match qr_result {
-                            Ok(_) => {
-                                info!("QR code generated successfully");
-                                // Update UI only after QR code is generated
-                                slint::invoke_from_event_loop(move || {
-                                    let ui = ui_handle_clone.unwrap();
-                                    ui.set_server_url(SharedString::from(server_info.url.clone()));
-                                    ui.set_server_running(true);
-                                    ui.set_status_message(SharedString::from(
-                                        "Server running - QR code ready",
-                                    ));
-                                    ui.set_is_loading(false);
-                                    info!("UI updated with server_running=true and QR code ready");
-                                })
-                                .unwrap();
-                            }
-                            Err(e) => {
-                                error!("Failed to generate QR code: {:?}", e);
-                                // Still start the server but show error in UI
-                                slint::invoke_from_event_loop(move || {
-                                    let ui = ui_handle_clone.unwrap();
-                                    ui.set_server_url(SharedString::from(server_info.url.clone()));
-                                    ui.set_server_running(true);
-                                    ui.set_status_message(SharedString::from(
-                                        "Server running - QR code generation failed",
-                                    ));
-                                    ui.set_is_loading(false);
-                                    info!("UI updated with server_running=true but QR code failed");
-                                })
-                                .unwrap();
-                            }
-                        };
+                        info!("QR code generated successfully");
+                        // Update UI only after QR code is generated
+                        slint::invoke_from_event_loop(move || {
+                            let ui = ui_handle_clone.unwrap();
+                            ui.set_server_url(SharedString::from(server_info.url.clone()));
+                            ui.set_server_running(true);
+                            ui.set_status_message(SharedString::from(
+                                "Server running - QR code ready",
+                            ));
+                            ui.set_is_loading(false);
+                            info!("UI updated with server_running=true and QR code ready");
+                        })
+                        .unwrap();
                     }
                     Err(err) => {
                         let error_msg = format!("Failed to start server: {}", err);
@@ -289,6 +268,23 @@ fn main() -> Result<()> {
                     }
                 }
             });
+        }
+    });
+
+    ui.on_render_qr({
+        let app_data = app_data.clone();
+        move || match generate_qr_code_for_url(
+            &app_data.file_server.lock().unwrap().get_server_info().url,
+        ) {
+            Ok(qr_image) => {
+                let rgba = qr_image.to_rgba8();
+                slint::Image::from_rgba8(slint::SharedPixelBuffer::clone_from_slice(
+                    &rgba,
+                    rgba.width(),
+                    rgba.height(),
+                ))
+            }
+            Err(_) => slint::Image::default(),
         }
     });
 
