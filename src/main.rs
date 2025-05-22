@@ -106,7 +106,6 @@ fn main() -> Result<()> {
                             file_server.get_server_info()
                         };
 
-                        info!("QR code generated successfully");
                         // Update UI only after QR code is generated
                         slint::invoke_from_event_loop(move || {
                             let ui = ui_handle_clone.unwrap();
@@ -188,11 +187,10 @@ fn main() -> Result<()> {
     });
 
     ui.on_render_qr({
-        let app_data = app_data.clone();
-        move || match generate_qr_code_for_url(
-            &app_data.file_server.lock().unwrap().get_server_info().url,
-        ) {
+        let file_server = app_data.file_server.clone();
+        move || match generate_qr_code_for_url(&file_server.lock().unwrap().get_server_info().url) {
             Ok(qr_image) => {
+                info!("QR code generated successfully");
                 let rgba = qr_image.to_rgba8();
                 slint::Image::from_rgba8(slint::SharedPixelBuffer::clone_from_slice(
                     &rgba,
@@ -206,15 +204,12 @@ fn main() -> Result<()> {
 
     // Handle URL click
     ui.on_open_url({
-        let app_data = app_data.clone();
+        let file_server = app_data.file_server.clone();
         move || {
-            let server_url = {
-                let file_server = app_data.file_server.lock().unwrap();
-                file_server.get_server_info().url
-            };
+            let server_url = &file_server.lock().unwrap().get_server_info().url;
 
             info!("Opening server URL in browser: {}", server_url);
-            if let Err(e) = open::that(&server_url) {
+            if let Err(e) = open::that(server_url) {
                 error!("Failed to open URL: {:?}", e);
             }
         }
