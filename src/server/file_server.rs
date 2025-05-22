@@ -91,10 +91,6 @@ impl FileServer {
         }
     }
 
-    pub fn get_file_list(&self) -> FileList {
-        self.state.file_list.lock().unwrap().clone()
-    }
-
     pub async fn start(&mut self) -> anyhow::Result<()> {
         if self.shutdown_tx.is_some() {
             return Ok(());

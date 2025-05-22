@@ -6,7 +6,6 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use log::{error, info};
-use models::FileList;
 use qrcode::generate_qr_code_for_url;
 use slint::{ComponentHandle, SharedString};
 use tokio::runtime::Runtime;
@@ -22,7 +21,6 @@ slint::include_modules!();
 #[derive(Clone)]
 struct AppData {
     file_server: Arc<Mutex<FileServer>>,
-    file_list: Arc<Mutex<FileList>>,
     runtime: Arc<Runtime>,
     config: ConfigData,
 }
@@ -31,7 +29,6 @@ impl AppData {
     fn new() -> Result<Self> {
         let runtime = Arc::new(Runtime::new()?);
         let file_server = Arc::new(Mutex::new(FileServer::new()?));
-        let file_list = Arc::new(Mutex::new(FileList::new()));
 
         // Load settings using ConfigManager
         let config_manager = config::ConfigManager::new("config/settings.yaml");
@@ -39,7 +36,6 @@ impl AppData {
 
         Ok(Self {
             file_server,
-            file_list,
             runtime,
             config,
         })
@@ -78,86 +74,6 @@ fn main() -> Result<()> {
 
     // Set up version information
     ui.set_version(SharedString::from(VERSION));
-
-    // Set up periodic refresh timer (every 5 seconds)
-    let ui_handle_for_timer = ui.as_weak();
-    let app_data_for_timer = app_data.clone();
-    std::thread::spawn(move || {
-        while let Some(ui) = ui_handle_for_timer.upgrade() {
-            // Sleep for 5 seconds
-            std::thread::sleep(std::time::Duration::from_secs(5));
-
-            // Check if UI still exists and server is running
-            if !ui.get_server_running() {
-                continue;
-            }
-
-            // Do the refresh on the main thread
-            if let Err(_) = slint::invoke_from_event_loop({
-                let ui_handle = ui_handle_for_timer.clone();
-                let app_data = app_data_for_timer.clone();
-                move || {
-                    if let Some(ui) = ui_handle.upgrade() {
-                        // Refresh files if server is running
-                        info!("Auto-refresh: Checking for new files...");
-
-                        // Get latest files from server to ensure UI is in sync with web uploads
-                        let server_files = {
-                            let file_server = app_data.file_server.lock().unwrap();
-                            file_server.get_file_list()
-                        };
-
-                        // Update local file list with server's list
-                        let update_needed = {
-                            let mut local_file_list = app_data.file_list.lock().unwrap();
-
-                            // Check for changes by comparing number of files
-                            // and also check for differences in file IDs
-                            let local_count = local_file_list.files.len();
-                            let server_count = server_files.files.len();
-
-                            // First, a simple count check
-                            let count_changed = local_count != server_count;
-
-                            // Then a more detailed check comparing file IDs
-                            // This helps when files are removed from one side but total count remains the same
-                            let ids_differ = if !count_changed && local_count > 0 {
-                                // Create sets of file IDs for easy comparison
-                                let local_ids: std::collections::HashSet<&String> =
-                                    local_file_list.files.iter().map(|f| &f.id).collect();
-                                let server_ids: std::collections::HashSet<&String> =
-                                    server_files.files.iter().map(|f| &f.id).collect();
-
-                                // Check if the sets are different
-                                local_ids != server_ids
-                            } else {
-                                false
-                            };
-
-                            if count_changed || ids_differ {
-                                info!(
-                                    "Auto-refresh: Found file changes: local={}, server={}",
-                                    local_count, server_count
-                                );
-                                *local_file_list = server_files;
-                                true
-                            } else {
-                                false
-                            }
-                        };
-
-                        // Update UI if needed
-                        if update_needed {
-                            update_ui_file_list(&ui, &app_data);
-                        }
-                    }
-                }
-            }) {
-                // If we can't invoke on the UI thread, the app is probably shutting down
-                break;
-            }
-        }
-    });
 
     // Handle start server
     ui.on_start_server({
@@ -308,23 +224,4 @@ fn main() -> Result<()> {
     ui.run()?;
 
     Ok(())
-}
-
-fn update_ui_file_list(ui: &AppWindow, app_data: &AppData) {
-    let file_list = app_data.file_list.lock().unwrap();
-    let mut slint_files = Vec::new();
-
-    for file in &file_list.files {
-        // Create a Slint FileInfo struct - the `id` field is required in the Slint struct
-        let slint_file_info = FileInfo {
-            name: SharedString::from(&file.name),
-            size: SharedString::from(file.formatted_size()),
-            path: SharedString::from(file.path.to_string_lossy().to_string()),
-            id: SharedString::from(&file.id),
-        };
-
-        slint_files.push(slint_file_info);
-    }
-
-    ui.set_files(slint::ModelRc::new(slint::VecModel::from(slint_files)));
 }
