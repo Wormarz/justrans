@@ -200,20 +200,32 @@
             const statusEl = document.getElementById('status');
             let lastFileCount = 0;
             let pollingInterval;
+            let chunkSize = 5 * 1024 * 1024; // Default 5MB, will be updated from config
+            let configLoaded = false;
 
-            // Load files on page load
-            loadFiles();
-
-            // Set up automatic polling to check for file changes every 2 seconds
-            startPolling();
+            // Load configuration and files on page load
+            loadConfig().then(() => {
+                configLoaded = true;
+                loadFiles();
+                // Set up automatic polling to check for file changes every 2 seconds
+                startPolling();
+            });
 
             // Handle file selection button
             selectFileBtn.addEventListener('click', function () {
+                if (!configLoaded) {
+                    showStatus('Please wait, loading configuration...', 'error');
+                    return;
+                }
                 fileInput.click();
             });
 
             // Handle file selection
             fileInput.addEventListener('change', function () {
+                if (!configLoaded) {
+                    showStatus('Please wait, loading configuration...', 'error');
+                    return;
+                }
                 if (fileInput.files.length > 0) {
                     uploadFiles(fileInput.files);
                 }
@@ -233,10 +245,30 @@
                 e.preventDefault();
                 uploadArea.classList.remove('dragover');
 
+                if (!configLoaded) {
+                    showStatus('Please wait, loading configuration...', 'error');
+                    return;
+                }
+
                 if (e.dataTransfer.files.length > 0) {
                     uploadFiles(e.dataTransfer.files);
                 }
             });
+
+            // Function to load configuration from server
+            function loadConfig() {
+                return fetch('/api/config')
+                    .then(response => response.json())
+                    .then(data => {
+                        // Update chunk size from server configuration
+                        chunkSize = data.upload_chunk_size_mb * 1024 * 1024;
+                        console.log(`Loaded chunk size from config: ${data.upload_chunk_size_mb}MB (${chunkSize} bytes)`);
+                    })
+                    .catch(error => {
+                        console.error('Error loading configuration, using default chunk size:', error);
+                        // Keep default chunk size if config loading fails
+                    });
+            }
 
             // Function to start polling for file changes
             function startPolling() {
@@ -291,7 +323,6 @@
 
             // Function to upload a single file
             function uploadFile(file) {
-                const chunkSize = 5 * 1024 * 1024; // 5MB chunks
                 const fileId = generateUUID(); // Generate unique ID for file
                 const totalChunks = Math.ceil(file.size / chunkSize);
 

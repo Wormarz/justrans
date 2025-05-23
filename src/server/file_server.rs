@@ -120,10 +120,11 @@ impl FileServer {
             .route("/", get(serve_index))
             .route("/api/files", get(get_files))
             .route("/api/files/:id", get(download_file))
+            .route("/api/config", get(get_config))
             .route(
                 "/api/upload",
                 post(upload_file).layer(axum::extract::DefaultBodyLimit::max(
-                    self.state.config.server.max_upload_size_mb as usize * 1024 * 1024,
+                    (self.state.config.server.upload_chunk_size_mb + 1) as usize * 1024 * 1024,
                 )),
             )
             .nest_service("/static", static_files_service)
@@ -191,6 +192,18 @@ async fn get_files(State(state): State<AppState>) -> Json<FileList> {
     Json(file_list)
 }
 
+#[derive(Serialize)]
+struct ConfigResponse {
+    upload_chunk_size_mb: u64,
+}
+
+#[axum::debug_handler]
+async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
+    Json(ConfigResponse {
+        upload_chunk_size_mb: state.config.server.upload_chunk_size_mb,
+    })
+}
+
 #[axum::debug_handler]
 async fn download_file(
     Path(id): Path<String>,
@@ -237,7 +250,6 @@ async fn upload_file(
     mut multipart: Multipart,
 ) -> Result<Json<FileInfo>, StatusCode> {
     log::info!("Starting file upload processing");
-    let max_upload_size = state.config.server.max_upload_size_mb * 1024 * 1024;
 
     // First collect metadata from the multipart form
     let mut file_name = None;
@@ -341,17 +353,6 @@ async fn upload_file(
                 return Err(StatusCode::BAD_REQUEST);
             }
         };
-
-    // Check file size
-    if file_data.len() as u64 > max_upload_size {
-        log::error!(
-            "Upload of '{}' rejected: size {} exceeds maximum allowed size of {} bytes",
-            file_name,
-            file_data.len(),
-            max_upload_size
-        );
-        return Err(StatusCode::PAYLOAD_TOO_LARGE);
-    }
 
     // Create the temporary directory for segments
     log::info!(

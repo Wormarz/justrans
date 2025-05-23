@@ -30,9 +30,9 @@ pub struct ServerConfig {
     #[serde(default = "default_bind_all")]
     pub bind_all_interfaces: bool,
 
-    /// Maximum upload file size in megabytes
-    #[serde(default = "default_max_upload_size_mb")]
-    pub max_upload_size_mb: u64,
+    /// Upload chunk size in megabytes
+    #[serde(default = "default_upload_chunk_size_mb")]
+    pub upload_chunk_size_mb: u64,
 }
 
 /// Display configuration options
@@ -68,8 +68,8 @@ fn default_bind_all() -> bool {
     true
 }
 
-fn default_max_upload_size_mb() -> u64 {
-    100
+fn default_upload_chunk_size_mb() -> u64 {
+    5
 }
 
 fn default_true() -> bool {
@@ -100,7 +100,7 @@ impl Default for ServerConfig {
         ServerConfig {
             port: default_port(),
             bind_all_interfaces: default_bind_all(),
-            max_upload_size_mb: default_max_upload_size_mb(),
+            upload_chunk_size_mb: default_upload_chunk_size_mb(),
         }
     }
 }
@@ -187,7 +187,7 @@ mod tests {
         let config = ServerConfig::default();
         assert_eq!(config.port, 8080);
         assert_eq!(config.bind_all_interfaces, true);
-        assert_eq!(config.max_upload_size_mb, 100);
+        assert_eq!(config.upload_chunk_size_mb, 5);
     }
 
     #[test]
@@ -225,13 +225,13 @@ mod tests {
         config_manager
             .update(|config| {
                 config.server.port = 9090;
-                config.server.max_upload_size_mb = 200;
+                config.server.upload_chunk_size_mb = 10;
             })
             .unwrap();
 
         // Verify changes
         let config = config_manager.get_config().unwrap();
         assert_eq!(config.server.port, 9090);
-        assert_eq!(config.server.max_upload_size_mb, 200);
+        assert_eq!(config.server.upload_chunk_size_mb, 10);
     }
 }

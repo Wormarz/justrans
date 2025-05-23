@@ -1,7 +1,7 @@
 server:
   port: 8080
   bind_all_interfaces: true
-  max_upload_size_mb: 100
+  upload_chunk_size_mb: 5
 display:
   show_tooltips: true
   theme: light

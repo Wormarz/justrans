@@ -8,8 +8,8 @@ server:
   # Whether to bind to all network interfaces (0.0.0.0) or just localhost (127.0.0.1)
   bind_all_interfaces: true
   
-  # Maximum upload file size in megabytes
-  max_upload_size_mb: 100
+  # Upload chunk size in megabytes
+  upload_chunk_size_mb: 5
 
 # Display Configuration
 display:
