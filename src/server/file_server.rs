@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -119,7 +120,12 @@ impl FileServer {
             .route("/", get(serve_index))
             .route("/api/files", get(get_files))
             .route("/api/files/:id", get(download_file))
-            .route("/api/upload", post(upload_file))
+            .route(
+                "/api/upload",
+                post(upload_file).layer(axum::extract::DefaultBodyLimit::max(
+                    self.state.config.server.max_upload_size_mb as usize * 1024 * 1024,
+                )),
+            )
             .nest_service("/static", static_files_service)
             .layer(TraceLayer::new_for_http())
             .layer(cors)
@@ -230,53 +236,255 @@ async fn upload_file(
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<Json<FileInfo>, StatusCode> {
-    // Get max upload size from settings (convert MB to bytes)
+    log::info!("Starting file upload processing");
     let max_upload_size = state.config.server.max_upload_size_mb * 1024 * 1024;
 
-    while let Ok(Some(field)) = multipart.next_field().await {
-        let file_name = match field.file_name() {
-            Some(name) => name.to_string(),
-            None => continue,
+    // First collect metadata from the multipart form
+    let mut file_name = None;
+    let mut segment_index = None;
+    let mut total_segments = None;
+    let mut file_id = None;
+    let mut file_data: Option<Vec<u8>> = None;
+
+    // Log all received form fields for debugging
+    log::info!("Processing multipart form data");
+
+    // Process each field in the multipart form
+    let mut field_count = 0;
+    while let Ok(Some(mut field)) = multipart.next_field().await {
+        field_count += 1;
+        let field_name = field.name().unwrap_or("unnamed").to_string();
+        log::info!("Processing field #{}: name='{}'", field_count, field_name);
+
+        match field_name.as_str() {
+            "file" => {
+                let original_filename = field.file_name().unwrap_or("unknown").to_string();
+                log::info!("Found file field with filename: {}", original_filename);
+                file_name = Some(original_filename);
+
+                // Read data in smaller chunks for better memory management
+                let mut buffer = Vec::new();
+                let mut bytes_read = 0;
+
+                // Process chunks of the file
+                log::info!("Reading file data chunks");
+                while let Ok(Some(chunk)) = field.chunk().await {
+                    bytes_read += chunk.len();
+                    log::info!(
+                        "Read chunk: {} bytes (total: {} bytes)",
+                        chunk.len(),
+                        bytes_read
+                    );
+                    buffer.extend_from_slice(&chunk);
+                }
+
+                if bytes_read > 0 {
+                    log::info!("Successfully read file data: {} bytes", bytes_read);
+                    file_data = Some(buffer);
+                } else {
+                    log::error!("No data read from file field");
+                }
+            }
+            "segment_index" => {
+                if let Ok(data) = field.text().await {
+                    log::info!("Found segment_index: {}", data);
+                    match data.parse::<usize>() {
+                        Ok(idx) => segment_index = Some(idx),
+                        Err(e) => log::error!("Failed to parse segment_index '{}': {}", data, e),
+                    }
+                } else {
+                    log::error!("Could not read segment_index field as text");
+                }
+            }
+            "total_segments" => {
+                if let Ok(data) = field.text().await {
+                    log::info!("Found total_segments: {}", data);
+                    match data.parse::<usize>() {
+                        Ok(total) => total_segments = Some(total),
+                        Err(e) => log::error!("Failed to parse total_segments '{}': {}", data, e),
+                    }
+                } else {
+                    log::error!("Could not read total_segments field as text");
+                }
+            }
+            "file_id" => {
+                if let Ok(data) = field.text().await {
+                    log::info!("Found file_id: {}", data);
+                    file_id = Some(data);
+                } else {
+                    log::error!("Could not read file_id field as text");
+                }
+            }
+            _ => log::warn!("Unexpected field name: {}", field_name),
+        }
+    }
+
+    // Log results of field processing
+    log::info!("Processed {} fields in multipart form", field_count);
+    log::info!("file_name: {:?}", file_name);
+    log::info!("segment_index: {:?}", segment_index);
+    log::info!("total_segments: {:?}", total_segments);
+    log::info!("file_id: {:?}", file_id);
+    log::info!(
+        "file_data: {} bytes",
+        file_data.as_ref().map_or(0, |d| d.len())
+    );
+
+    // Validate required fields
+    let (file_name, segment_index, total_segments, file_id, file_data) =
+        match (file_name, segment_index, total_segments, file_id, file_data) {
+            (Some(name), Some(idx), Some(total), Some(id), Some(data)) => {
+                (name, idx, total, id, data)
+            }
+            _ => {
+                log::error!("Missing required fields in multipart upload");
+                return Err(StatusCode::BAD_REQUEST);
+            }
         };
 
-        let content_type = field
-            .content_type()
-            .map(|ct| ct.to_string())
-            .unwrap_or_else(|| "application/octet-stream".to_string());
+    // Check file size
+    if file_data.len() as u64 > max_upload_size {
+        log::error!(
+            "Upload of '{}' rejected: size {} exceeds maximum allowed size of {} bytes",
+            file_name,
+            file_data.len(),
+            max_upload_size
+        );
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
 
-        // Read the file data
-        let data = match field.bytes().await {
-            Ok(data) => data,
-            Err(_) => return Err(StatusCode::BAD_REQUEST),
-        };
+    // Create the temporary directory for segments
+    log::info!(
+        "Creating temp directory for file segments: {:?}",
+        state.temp_dir.join(&file_id)
+    );
+    let temp_dir = state.temp_dir.join(&file_id);
+    std::fs::create_dir_all(&temp_dir).map_err(|e| {
+        log::error!(
+            "Failed to create temp directory: {:?}, error: {}",
+            temp_dir,
+            e
+        );
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
-        // Check file size against max upload size
-        if data.len() as u64 > max_upload_size {
+    // Save the segment
+    let segment_path = temp_dir.join(format!("segment_{}", segment_index));
+    log::info!("Saving segment to: {:?}", segment_path);
+    std::fs::write(&segment_path, &file_data).map_err(|e| {
+        log::error!(
+            "Failed to write segment file: {:?}, error: {}",
+            segment_path,
+            e
+        );
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    log::info!(
+        "Received segment {} of {} for file '{}' (ID: {}), size: {} bytes",
+        segment_index + 1,
+        total_segments,
+        file_name,
+        file_id,
+        file_data.len()
+    );
+
+    // If this is the last segment, combine all segments
+    if segment_index == total_segments - 1 {
+        log::info!(
+            "Processing final segment for file '{}', combining chunks",
+            file_name
+        );
+
+        // Check if all previous segments exist
+        let mut missing_segments = Vec::new();
+        for i in 0..total_segments {
+            let segment_path = temp_dir.join(format!("segment_{}", i));
+            if !segment_path.exists() {
+                missing_segments.push(i);
+            }
+        }
+
+        if !missing_segments.is_empty() {
+            log::error!("Missing segments: {:?}", missing_segments);
+            return Err(StatusCode::BAD_REQUEST);
+        }
+
+        // Combine all segments into the final file
+        let final_path = state.temp_dir.join(format!("{}_file", file_id));
+        log::info!("Creating final file: {:?}", final_path);
+        let mut final_file = std::fs::File::create(&final_path).map_err(|e| {
             log::error!(
-                "Upload of '{}' rejected: size {} exceeds maximum allowed size of {} bytes",
-                file_name,
-                data.len(),
-                max_upload_size
+                "Failed to create final file: {:?}, error: {}",
+                final_path,
+                e
             );
-            return Err(StatusCode::PAYLOAD_TOO_LARGE);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+        let mut total_size: u64 = 0;
+
+        // Combine all segments
+        for i in 0..total_segments {
+            let segment_path = temp_dir.join(format!("segment_{}", i));
+            log::info!("Reading segment {}: {:?}", i, segment_path);
+
+            let segment_data = std::fs::read(&segment_path).map_err(|e| {
+                log::error!(
+                    "Failed to read segment file: {:?}, error: {}",
+                    segment_path,
+                    e
+                );
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+            total_size += segment_data.len() as u64;
+            log::info!("Read segment {} ({} bytes)", i, segment_data.len());
+
+            log::info!("Writing segment {} to final file", i);
+            final_file.write_all(&segment_data).map_err(|e| {
+                log::error!(
+                    "Failed to write to final file: {:?}, error: {}",
+                    final_path,
+                    e
+                );
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
         }
 
-        // Create a unique file path
-        let file_id = uuid::Uuid::new_v4().to_string();
-        let file_path = state.temp_dir.join(&file_id);
+        // Flush and close file
+        final_file.flush().map_err(|e| {
+            log::error!("Failed to flush final file: {:?}, error: {}", final_path, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+        drop(final_file);
 
-        // Write the file to disk
-        if std::fs::write(&file_path, &data).is_err() {
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        // Clean up temporary directory
+        log::info!("Cleaning up temporary directory: {:?}", temp_dir);
+        if let Err(e) = std::fs::remove_dir_all(&temp_dir) {
+            log::warn!(
+                "Failed to clean up temp directory: {:?}, error: {}",
+                temp_dir,
+                e
+            );
+            // Continue despite cleanup failure
         }
+
+        log::info!(
+            "File '{}' (ID: {}) successfully combined from {} segments, total size: {}",
+            file_name,
+            file_id,
+            total_segments,
+            total_size
+        );
 
         // Create file info
         let file_info = FileInfo {
             id: file_id,
             name: file_name,
-            path: file_path,
-            size: data.len() as u64,
-            mime_type: content_type,
+            path: final_path,
+            size: total_size,
+            mime_type: "application/octet-stream".to_string(),
         };
 
         // Add file to the list
@@ -290,8 +498,24 @@ async fn upload_file(
             );
         }
 
-        return Ok(Json(file_info));
+        log::info!(
+            "Successfully completed upload process for file: {}",
+            file_info.name
+        );
+        Ok(Json(file_info))
+    } else {
+        // Return a response indicating segment was received
+        log::info!(
+            "Successfully saved segment {} of {}",
+            segment_index + 1,
+            total_segments
+        );
+        Ok(Json(FileInfo {
+            id: file_id,
+            name: format!("segment_{} of {}", segment_index + 1, total_segments),
+            path: segment_path,
+            size: file_data.len() as u64,
+            mime_type: "application/octet-stream".to_string(),
+        }))
     }
-
-    Err(StatusCode::BAD_REQUEST)
 }

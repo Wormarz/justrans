@@ -291,28 +291,92 @@
 
             // Function to upload a single file
             function uploadFile(file) {
-                const formData = new FormData();
-                formData.append('file', file);
+                const chunkSize = 5 * 1024 * 1024; // 5MB chunks
+                const fileId = generateUUID(); // Generate unique ID for file
+                const totalChunks = Math.ceil(file.size / chunkSize);
 
-                showStatus('Uploading file...', 'info');
+                // Create progress bar immediately
+                updateProgressBar(0, totalChunks);
 
-                fetch('/api/upload', {
-                    method: 'POST',
-                    body: formData
-                })
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error('Upload failed');
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        showStatus('File uploaded successfully!', 'success');
-                        loadFiles();
-                    })
-                    .catch(error => {
-                        showStatus('Error uploading file: ' + error.message, 'error');
+                // Function to upload a single chunk
+                async function uploadChunk(index) {
+                    if (index >= totalChunks) {
+                        // All chunks uploaded
+                        return Promise.resolve();
+                    }
+
+                    const start = index * chunkSize;
+                    const end = Math.min(file.size, start + chunkSize);
+                    const chunk = file.slice(start, end);
+
+                    // Log chunk details
+                    console.log(`Uploading chunk ${index + 1}/${totalChunks} of file ${file.name} (${start}-${end}, size: ${chunk.size} bytes)`);
+
+                    // Create FormData for this chunk
+                    const formData = new FormData();
+
+                    // Add file chunk - must come first
+                    formData.append('file', new Blob([chunk]), file.name);
+
+                    // Add metadata
+                    formData.append('segment_index', index.toString());
+                    formData.append('total_segments', totalChunks.toString());
+                    formData.append('file_id', fileId);
+
+                    // Debug log form data
+                    console.log(`FormData for chunk ${index + 1}:`, {
+                        fileName: file.name,
+                        fileId: fileId,
+                        segmentIndex: index,
+                        totalSegments: totalChunks,
+                        chunkSize: chunk.size
                     });
+
+                    try {
+                        // Upload this chunk
+                        const response = await fetch('/api/upload', {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            throw new Error(`Server returned ${response.status}: ${errorText}`);
+                        }
+
+                        const data = await response.json();
+                        console.log(`Successfully uploaded chunk ${index + 1}/${totalChunks}`);
+
+                        // Update progress bar
+                        updateProgressBar(index + 1, totalChunks);
+
+                        // If this was the last chunk, show completion
+                        if (index === totalChunks - 1) {
+                            showUploadComplete(data);
+                            return;
+                        }
+
+                        // Upload next chunk
+                        return await uploadChunk(index + 1);
+                    } catch (error) {
+                        console.error(`Error uploading chunk ${index + 1}:`, error);
+                        showStatus(`Upload failed: ${error.message}`, 'error');
+                        throw error;
+                    }
+                }
+
+                // Start uploading from the first chunk
+                uploadChunk(0).catch(err => {
+                    console.error('Upload chain failed:', err);
+                });
+            }
+
+            function generateUUID() {
+                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+                    const r = Math.random() * 16 | 0,
+                        v = c == 'x' ? r : (r & 0x3 | 0x8);
+                    return v.toString(16);
+                });
             }
 
             // Function to load files
@@ -395,6 +459,67 @@
                 setTimeout(() => {
                     statusEl.classList.add('hidden');
                 }, 5000);
+            }
+
+            // Function to update progress bar for chunked uploads
+            function updateProgressBar(currentChunk, totalChunks) {
+                // Calculate percentage
+                const percent = Math.round((currentChunk / totalChunks) * 100);
+
+                // Create progress element if it doesn't exist
+                if (!document.getElementById('uploadProgress')) {
+                    const progressContainer = document.createElement('div');
+                    progressContainer.id = 'progressContainer';
+                    progressContainer.style.marginTop = '15px';
+                    progressContainer.style.marginBottom = '15px';
+
+                    const progressText = document.createElement('div');
+                    progressText.id = 'progressText';
+                    progressText.textContent = `Uploading: 0%`;
+
+                    const progressBar = document.createElement('div');
+                    progressBar.style.height = '10px';
+                    progressBar.style.backgroundColor = '#e0e0e0';
+                    progressBar.style.borderRadius = '5px';
+                    progressBar.style.marginTop = '5px';
+
+                    const progress = document.createElement('div');
+                    progress.id = 'uploadProgress';
+                    progress.style.width = '0%';
+                    progress.style.height = '100%';
+                    progress.style.backgroundColor = 'var(--primary-color)';
+                    progress.style.borderRadius = '5px';
+                    progress.style.transition = 'width 0.3s';
+
+                    progressBar.appendChild(progress);
+                    progressContainer.appendChild(progressText);
+                    progressContainer.appendChild(progressBar);
+
+                    // Insert after status element
+                    statusEl.parentNode.insertBefore(progressContainer, statusEl.nextSibling);
+                }
+
+                // Update progress
+                const progressBar = document.getElementById('uploadProgress');
+                const progressText = document.getElementById('progressText');
+
+                progressBar.style.width = `${percent}%`;
+                progressText.textContent = `Uploading: ${percent}%`;
+            }
+
+            // Function to show upload complete message
+            function showUploadComplete(fileData) {
+                // Remove progress bar
+                const progressContainer = document.getElementById('progressContainer');
+                if (progressContainer) {
+                    progressContainer.remove();
+                }
+
+                // Show success message
+                showStatus(`File "${fileData.name}" uploaded successfully!`, 'success');
+
+                // Refresh the file list
+                loadFiles();
             }
         });
     </script>
