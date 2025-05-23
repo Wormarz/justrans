@@ -68,6 +68,81 @@ component InfoPopup inherits Rectangle {
     }
 }
 
+component ConfigDialog inherits Rectangle {
+    callback close();
+    callback save-config(int);
+    in property <int> initial-server-port: 8080;
+    
+    property <int> server-port: root.initial-server-port;
+    
+    width: 450px;
+    height: 280px;
+    background: white;
+    border-radius: 8px;
+    drop-shadow-color: #00000088;
+    drop-shadow-offset-x: 0px;
+    drop-shadow-offset-y: 2px;
+    drop-shadow-blur: 10px;
+
+    VerticalBox {
+        padding: 20px;
+        spacing: 16px;
+
+        Text {
+            text: "Configuration";
+            font-size: 24px;
+            font-weight: 700;
+            horizontal-alignment: center;
+        }
+
+        VerticalBox {
+            spacing: 16px;
+            
+            // Server Port Configuration
+            VerticalBox {
+                spacing: 8px;
+                Text {
+                    text: "Server Port:";
+                    font-weight: 600;
+                    font-size: 14px;
+                }
+                LineEdit {
+                    text: root.server-port;
+                    placeholder-text: "Enter port number (e.g., 8080)";
+                    input-type: number;
+                    edited(text) => {
+                        root.server-port = text.to-float();
+                    }
+                }
+                Text {
+                    text: "Choose a port between 1024-65535. Default is 8080.";
+                    font-size: 12px;
+                    color: #666;
+                    wrap: word-wrap;
+                }
+            }
+        }
+
+        HorizontalBox {
+            alignment: center;
+            spacing: 12px;
+            Button {
+                text: "Close";
+                clicked => {
+                    root.close();
+                }
+            }
+            Button {
+                text: "Save";
+                clicked => {
+                    root.save-config(root.server-port);
+                    root.close();
+                }
+            }
+        }
+    }
+}
+
 export component AppWindow inherits Window {
     title: "JusTrans - File Exchange";
     min-width: 500px;
@@ -84,7 +159,9 @@ export component AppWindow inherits Window {
     in-out property <string> status-message: "Server not running";
     in-out property <bool> is-loading: false;
     in-out property <bool> show-info: false;
+    in-out property <bool> show-config: false;
     in-out property <string> version: "0.1.0";
+    in-out property <int> config-server-port: 8080;
     
     // Callbacks
     callback start-server();
@@ -96,6 +173,7 @@ export component AppWindow inherits Window {
     callback copy-url();
     callback refresh-files();
     callback open-url();
+    callback save-config(int);
     pure callback render-qr() -> image;
 
     VerticalBox {
@@ -142,13 +220,13 @@ export component AppWindow inherits Window {
                     border-color: #ddd;
                     y: (parent.height - self.height) / 2;
 
-                    Text {
-                        text: "?";
-                        font-size: 20px;
-                        font-weight: 600;
-                        color: #666;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
+                    Image {
+                        source: @image-url("../img/info.svg");
+                        colorize: #62B1DF;
+                        width: 24px;
+                        height: 24px;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
                     }
 
                     TouchArea {
@@ -160,6 +238,38 @@ export component AppWindow inherits Window {
 
                     states [
                         hover when root.show-info: {
+                            background: #e0e0e0;
+                        }
+                    ]
+                }
+
+                // Config button
+                Rectangle {
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 20px;
+                    background: #f5f5f5;
+                    border-width: 1px;
+                    border-color: #ddd;
+                    y: (parent.height - self.height) / 2;
+
+                    Image {
+                        source: @image-url("../img/settings.svg");
+                        width: 24px;
+                        height: 24px;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                    }
+
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.show-config = true;
+                        }
+                    }
+
+                    states [
+                        hover when root.show-config: {
                             background: #e0e0e0;
                         }
                     ]
@@ -253,6 +363,25 @@ export component AppWindow inherits Window {
             version: root.version;
             close => {
                 root.show-info = false;
+            }
+        }
+    }
+
+    // Config popup
+    if (root.show-config): Rectangle {
+        background: #00000088;
+        width: 100%;
+        height: 100%;
+
+        ConfigDialog {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            initial-server-port: root.config-server-port;
+            close => {
+                root.show-config = false;
+            }
+            save-config(port) => {
+                root.save-config(port);
             }
         }
     }

@@ -70,6 +70,9 @@ fn main() -> Result<()> {
         ui.set_server_url(SharedString::from(server_info.url));
         ui.set_server_running(server_info.running);
         ui.set_status_message(SharedString::from("Server not running"));
+
+        // Set config values
+        ui.set_config_server_port(app_data.config.server.port as i32);
     }
 
     // Set up version information
@@ -211,6 +214,30 @@ fn main() -> Result<()> {
             info!("Opening server URL in browser: {}", server_url);
             if let Err(e) = open::that(server_url) {
                 error!("Failed to open URL: {:?}", e);
+            }
+        }
+    });
+
+    // Handle save config
+    ui.on_save_config({
+        let ui_handle = ui.as_weak();
+        move |port| {
+            let ui = ui_handle.unwrap();
+
+            info!("Saving config: port={}", port);
+
+            // Create config manager
+            let config_manager = config::ConfigManager::new("config/settings.yaml");
+
+            // Update config
+            if let Err(e) = config_manager.update(|config| {
+                config.server.port = port as u16;
+            }) {
+                error!("Failed to save config: {}", e);
+                ui.set_status_message(SharedString::from(format!("Failed to save config: {}", e)));
+            } else {
+                info!("Config saved successfully");
+                ui.set_status_message(SharedString::from("Configuration saved successfully"));
             }
         }
     });
