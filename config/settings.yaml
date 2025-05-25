@@ -1,10 +1,7 @@
 server:
   port: 8080
-  bind_all_interfaces: true
   upload_chunk_size_mb: 5
 display:
-  show_tooltips: true
   theme: light
 storage:
   storage_dir: uploads
-  use_relative_paths: true

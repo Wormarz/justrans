@@ -1,4 +1,4 @@
-import { Button, VerticalBox, HorizontalBox, ListView, LineEdit, ScrollView, Spinner } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, ListView, LineEdit, ScrollView, Spinner, ComboBox } from "std-widgets.slint";
 
 struct FileInfo {
     name: string,
@@ -43,7 +43,7 @@ component InfoPopup inherits Rectangle {
                 font-weight: 600;
                 font-size: 14px;
             }
-            
+
             Text {
                 text: "• Easy file sharing via web browser\n• QR code for quick access\n• Simple and intuitive interface\n• Cross-platform support";
                 font-size: 14px;
@@ -70,13 +70,26 @@ component InfoPopup inherits Rectangle {
 
 component ConfigDialog inherits Rectangle {
     callback close();
-    callback save-config(int);
+    callback save-config(int, int, string, string);
+
+    // Server config
     in property <int> initial-server-port: 8080;
-    
+    in property <int> initial-upload-chunk-size-mb: 5;
+
+    // Display config
+    in property <string> initial-theme: "light";
+
+    // Storage config
+    in property <string> initial-storage-dir: "uploads";
+
+    // Internal properties
     property <int> server-port: root.initial-server-port;
-    
-    width: 450px;
-    height: 280px;
+    property <int> upload-chunk-size-mb: root.initial-upload-chunk-size-mb;
+    property <string> theme: root.initial-theme;
+    property <string> storage-dir: root.initial-storage-dir;
+
+    width: 500px;
+    height: 450px;
     background: white;
     border-radius: 8px;
     drop-shadow-color: #00000088;
@@ -89,36 +102,164 @@ component ConfigDialog inherits Rectangle {
         spacing: 16px;
 
         Text {
-            text: "Configuration";
+            text: "Settings";
             font-size: 24px;
             font-weight: 700;
             horizontal-alignment: center;
         }
 
-        VerticalBox {
-            spacing: 16px;
-            
-            // Server Port Configuration
+        ScrollView {
             VerticalBox {
-                spacing: 8px;
-                Text {
-                    text: "Server Port:";
-                    font-weight: 600;
-                    font-size: 14px;
-                }
-                LineEdit {
-                    text: root.server-port;
-                    placeholder-text: "Enter port number (e.g., 8080)";
-                    input-type: number;
-                    edited(text) => {
-                        root.server-port = text.to-float();
+                spacing: 24px;
+                
+                // Server Configuration Section
+                VerticalBox {
+                    spacing: 12px;
+                    Text {
+                        text: "Server Configuration";
+                        font-size: 18px;
+                        font-weight: 600;
+                        color: #333;
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: #ddd;
+                    }
+
+                    VerticalBox {
+                        spacing: 12px;
+
+                        // Server Port
+                        VerticalBox {
+                            spacing: 6px;
+                            Text {
+                                text: "Server Port:";
+                                font-weight: 500;
+                                font-size: 14px;
+                            }
+                            LineEdit {
+                                text: root.server-port;
+                                placeholder-text: "Enter port number (e.g., 8080)";
+                                input-type: number;
+                                edited(text) => {
+                                    root.server-port = text.to-float();
+                                }
+                            }
+                            Text {
+                                text: "Choose a port between 1024-65535. Default is 8080.";
+                                font-size: 12px;
+                                color: #666;
+                            }
+                        }
+
+                        // Upload Chunk Size
+                        VerticalBox {
+                            spacing: 6px;
+                            Text {
+                                text: "Upload Chunk Size (MB):";
+                                font-weight: 500;
+                                font-size: 14px;
+                            }
+                            LineEdit {
+                                text: root.upload-chunk-size-mb;
+                                placeholder-text: "Enter chunk size in MB (e.g., 5)";
+                                input-type: number;
+                                edited(text) => {
+                                    root.upload-chunk-size-mb = text.to-float();
+                                }
+                            }
+                            Text {
+                                text: "Size of file chunks during upload. Larger values may improve performance for big files.";
+                                font-size: 12px;
+                                color: #666;
+                            }
+                        }
                     }
                 }
-                Text {
-                    text: "Choose a port between 1024-65535. Default is 8080.";
-                    font-size: 12px;
-                    color: #666;
-                    wrap: word-wrap;
+
+                // Display Configuration Section
+                VerticalBox {
+                    spacing: 12px;
+                    Text {
+                        text: "Display Configuration";
+                        font-size: 18px;
+                        font-weight: 600;
+                        color: #333;
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: #ddd;
+                    }
+
+                    VerticalBox {
+                        spacing: 12px;
+
+                        // Theme Selection
+                        VerticalBox {
+                            spacing: 6px;
+                            Text {
+                                text: "Theme:";
+                                font-weight: 500;
+                                font-size: 14px;
+                            }
+                            ComboBox {
+                                model: ["light", "dark"];
+                                current-value: root.theme;
+                                selected(value) => {
+                                    root.theme = value;
+                                }
+                            }
+                            Text {
+                                text: "Choose between light and dark theme for the application.";
+                                font-size: 12px;
+                                color: #666;
+                            }
+                        }
+                    }
+                }
+
+                // Storage Configuration Section
+                VerticalBox {
+                    spacing: 12px;
+                    Text {
+                        text: "Storage Configuration";
+                        font-size: 18px;
+                        font-weight: 600;
+                        color: #333;
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: #ddd;
+                    }
+
+                    VerticalBox {
+                        spacing: 12px;
+
+                        // Storage Directory
+                        VerticalBox {
+                            spacing: 6px;
+                            Text {
+                                text: "Storage Directory:";
+                                font-weight: 500;
+                                font-size: 14px;
+                            }
+                            LineEdit {
+                                text: root.storage-dir;
+                                placeholder-text: "Enter storage directory path";
+                                edited(text) => {
+                                    root.storage-dir = text;
+                                }
+                            }
+                            Text {
+                                text: "Directory where uploaded files will be stored.";
+                                font-size: 12px;
+                                color: #666;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -135,7 +276,12 @@ component ConfigDialog inherits Rectangle {
             Button {
                 text: "Save";
                 clicked => {
-                    root.save-config(root.server-port);
+                    root.save-config(
+                        root.server-port,
+                        root.upload-chunk-size-mb,
+                        root.theme,
+                        root.storage-dir
+                    );
                     root.close();
                 }
             }
@@ -161,7 +307,12 @@ export component AppWindow inherits Window {
     in-out property <bool> show-info: false;
     in-out property <bool> show-config: false;
     in-out property <string> version: "0.1.0";
+    
+    // Configuration properties
     in-out property <int> config-server-port: 8080;
+    in-out property <int> config-upload-chunk-size-mb: 5;
+    in-out property <string> config-theme: "light";
+    in-out property <string> config-storage-dir: "uploads";
     
     // Callbacks
     callback start-server();
@@ -173,7 +324,7 @@ export component AppWindow inherits Window {
     callback copy-url();
     callback refresh-files();
     callback open-url();
-    callback save-config(int);
+    callback save-config(int, int, string, string);
     pure callback render-qr() -> image;
 
     VerticalBox {
@@ -376,12 +527,22 @@ export component AppWindow inherits Window {
         ConfigDialog {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
+            
+            // Server config
             initial-server-port: root.config-server-port;
+            initial-upload-chunk-size-mb: root.config-upload-chunk-size-mb;
+            
+            // Display config
+            initial-theme: root.config-theme;
+            
+            // Storage config
+            initial-storage-dir: root.config-storage-dir;
+            
             close => {
                 root.show-config = false;
             }
-            save-config(port) => {
-                root.save-config(port);
+            save-config(port, chunk-size, theme, storage-dir) => {
+                root.save-config(port, chunk-size, theme, storage-dir);
             }
         }
     }

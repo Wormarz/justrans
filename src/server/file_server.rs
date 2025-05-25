@@ -46,11 +46,7 @@ pub struct FileServer {
 }
 
 impl FileServer {
-    pub fn new() -> anyhow::Result<Self> {
-        // Load settings using ConfigManager
-        let config_manager = crate::config::ConfigManager::new("config/settings.yaml");
-        let config = config_manager.load()?;
-
+    pub fn new(config: &crate::config::ConfigData) -> anyhow::Result<Self> {
         // Create temp directory for uploaded files
         let storage_dir = PathBuf::from(&config.storage.storage_dir);
         std::fs::create_dir_all(&storage_dir)?;
@@ -75,7 +71,7 @@ impl FileServer {
             state: AppState {
                 file_list: Arc::new(Mutex::new(FileList::new())),
                 temp_dir: storage_dir,
-                config: config,
+                config: config.clone(),
             },
             server_info: Arc::new(Mutex::new(server_info)),
             shutdown_tx: None,

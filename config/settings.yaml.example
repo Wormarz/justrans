@@ -5,17 +5,11 @@ server:
   # Port for the server to listen on
   port: 8080
   
-  # Whether to bind to all network interfaces (0.0.0.0) or just localhost (127.0.0.1)
-  bind_all_interfaces: true
-  
   # Upload chunk size in megabytes
   upload_chunk_size_mb: 5
 
 # Display Configuration
 display:
-  # Whether to show tooltips
-  show_tooltips: true
-  
   # Default theme (light or dark)
   theme: "light"
 
@@ -23,6 +17,3 @@ display:
 storage:
   # Directory to store uploaded files
   storage_dir: "uploads"
-  
-  # Whether to use relative paths
-  use_relative_paths: true 

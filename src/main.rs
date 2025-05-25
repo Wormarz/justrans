@@ -28,11 +28,13 @@ struct AppData {
 impl AppData {
     fn new() -> Result<Self> {
         let runtime = Arc::new(Runtime::new()?);
-        let file_server = Arc::new(Mutex::new(FileServer::new()?));
 
         // Load settings using ConfigManager
         let config_manager = config::ConfigManager::new("config/settings.yaml");
         let config = config_manager.load()?;
+
+        // Create file server with the loaded config
+        let file_server = Arc::new(Mutex::new(FileServer::new(&config)?));
 
         Ok(Self {
             file_server,
@@ -53,7 +55,7 @@ fn main() -> Result<()> {
     );
 
     // Create app data (includes loading settings)
-    let app_data = AppData::new()?;
+    let app_data = Arc::new(AppData::new()?);
 
     // Log some settings info
     info!(
@@ -73,6 +75,11 @@ fn main() -> Result<()> {
 
         // Set config values
         ui.set_config_server_port(app_data.config.server.port as i32);
+        ui.set_config_upload_chunk_size_mb(app_data.config.server.upload_chunk_size_mb as i32);
+        ui.set_config_theme(SharedString::from(app_data.config.display.theme.clone()));
+        ui.set_config_storage_dir(SharedString::from(
+            app_data.config.storage.storage_dir.clone(),
+        ));
     }
 
     // Set up version information
@@ -221,23 +228,48 @@ fn main() -> Result<()> {
     // Handle save config
     ui.on_save_config({
         let ui_handle = ui.as_weak();
-        move |port| {
+        let app_data_clone = app_data.clone();
+        move |port, chunk_size, theme, storage_dir| {
             let ui = ui_handle.unwrap();
 
-            info!("Saving config: port={}", port);
+            info!(
+                "Saving config: port={}, chunk_size={}, theme={}, storage_dir={}",
+                port, chunk_size, theme, storage_dir
+            );
 
             // Create config manager
             let config_manager = config::ConfigManager::new("config/settings.yaml");
 
             // Update config
             if let Err(e) = config_manager.update(|config| {
+                // Server configuration
                 config.server.port = port as u16;
+                config.server.upload_chunk_size_mb = chunk_size as u64;
+
+                // Display configuration
+                config.display.theme = theme.to_string();
+
+                // Storage configuration
+                config.storage.storage_dir = storage_dir.to_string();
             }) {
                 error!("Failed to save config: {}", e);
                 ui.set_status_message(SharedString::from(format!("Failed to save config: {}", e)));
             } else {
                 info!("Config saved successfully");
-                ui.set_status_message(SharedString::from("Configuration saved successfully"));
+
+                // Check if server is running and port changed
+                let server_running = {
+                    let file_server = app_data_clone.file_server.lock().unwrap();
+                    file_server.get_server_info().running
+                };
+
+                if server_running && app_data_clone.config.server.port != port as u16 {
+                    ui.set_status_message(SharedString::from(
+                        "Configuration saved - restart server to apply port changes",
+                    ));
+                } else {
+                    ui.set_status_message(SharedString::from("Configuration saved successfully"));
+                }
             }
         }
     });
