@@ -131,11 +131,7 @@ impl FileServer {
         // Get server address with binding based on settings
         let addr = {
             let info = server_info.lock().unwrap();
-            let bind_address = if self.state.config.server.bind_all_interfaces {
-                "0.0.0.0"
-            } else {
-                "127.0.0.1"
-            };
+            let bind_address = "0.0.0.0";
             SocketAddr::new(bind_address.parse()?, info.port)
         };
 

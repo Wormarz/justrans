@@ -26,10 +26,6 @@ pub struct ServerConfig {
     #[serde(default = "default_port")]
     pub port: u16,
 
-    /// Whether to bind to all network interfaces (0.0.0.0) or just localhost (127.0.0.1)
-    #[serde(default = "default_bind_all")]
-    pub bind_all_interfaces: bool,
-
     /// Upload chunk size in megabytes
     #[serde(default = "default_upload_chunk_size_mb")]
     pub upload_chunk_size_mb: u64,
@@ -38,10 +34,6 @@ pub struct ServerConfig {
 /// Display configuration options
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DisplayConfig {
-    /// Whether to show tooltips
-    #[serde(default = "default_true")]
-    pub show_tooltips: bool,
-
     /// Default theme (light or dark)
     #[serde(default = "default_theme")]
     pub theme: String,
@@ -53,10 +45,6 @@ pub struct StorageConfig {
     /// Directory to store uploaded files
     #[serde(default = "default_storage_dir")]
     pub storage_dir: String,
-
-    /// Whether to use relative paths
-    #[serde(default = "default_true")]
-    pub use_relative_paths: bool,
 }
 
 // Default function implementations
@@ -64,16 +52,8 @@ fn default_port() -> u16 {
     8080
 }
 
-fn default_bind_all() -> bool {
-    true
-}
-
 fn default_upload_chunk_size_mb() -> u64 {
     5
-}
-
-fn default_true() -> bool {
-    true
 }
 
 fn default_theme() -> String {
@@ -99,7 +79,6 @@ impl Default for ServerConfig {
     fn default() -> Self {
         ServerConfig {
             port: default_port(),
-            bind_all_interfaces: default_bind_all(),
             upload_chunk_size_mb: default_upload_chunk_size_mb(),
         }
     }
@@ -108,7 +87,6 @@ impl Default for ServerConfig {
 impl Default for DisplayConfig {
     fn default() -> Self {
         DisplayConfig {
-            show_tooltips: default_true(),
             theme: default_theme(),
         }
     }
@@ -118,7 +96,6 @@ impl Default for StorageConfig {
     fn default() -> Self {
         StorageConfig {
             storage_dir: default_storage_dir(),
-            use_relative_paths: default_true(),
         }
     }
 }
@@ -186,7 +163,6 @@ mod tests {
     fn test_default_config() {
         let config = ServerConfig::default();
         assert_eq!(config.port, 8080);
-        assert_eq!(config.bind_all_interfaces, true);
         assert_eq!(config.upload_chunk_size_mb, 5);
     }
 
