@@ -1,0 +1,20 @@
+[package]
+name = "settings"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+log.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_yaml = "0.9.33"
+settings_derive = {path = "../settings_derive", optional = true }
+
+[dev-dependencies]
+tempfile = "3.10.1"
+assert_cmd = "2.0" 
+
+[features]
+default = []
+derive = ["settings_derive"]
+
