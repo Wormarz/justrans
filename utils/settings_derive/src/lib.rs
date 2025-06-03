@@ -23,24 +23,6 @@ pub fn derive_settings(input: TokenStream) -> TokenStream {
                     Ok(std::sync::Arc::new(std::sync::Mutex::new(Self::load(&default_path)?)))
                 })?.clone())
             }
-
-            // fn load(path: &std::path::PathBuf) -> anyhow::Result<Self::Config> {
-            //     // use std::fs;
-            //     // use anyhow::Context;
-
-            //     // if !path.exists() {
-            //     //     let default_config = Self::Config::default();
-            //     //     return Ok(default_config);
-            //     // }
-
-            //     // let config_content = fs::read_to_string(path)
-            //     //     .context(format!("Failed to read settings file: {:?}", path))?;
-
-            //     // let config: Self::Config = serde_yaml::from_str(&config_content)
-            //     //     .context(format!("Failed to parse settings file: {:?}", path))?;
-            //     let config = Self::Config::default();
-            //     Ok(config)
-            // }
         }
     };
 

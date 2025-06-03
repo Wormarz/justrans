@@ -34,17 +34,17 @@ pub trait Settings: Serialize {
 
     /// Load the configuration
     fn load(path: &PathBuf) -> Result<Self::Config> {
-        // if !path.exists() {
-        //     let default_config = Self::Config::default();
-        //     return Ok(default_config);
-        // }
+        if !path.exists() {
+            let default_config = Self::Config::default();
+            return Ok(default_config);
+        }
 
-        // let config_content = fs::read_to_string(path)
-        //     .context(format!("Failed to read settings file: {:?}", path))?;
+        let config_content = fs::read_to_string(path)
+            .context(format!("Failed to read settings file: {:?}", path))?;
 
-        // let config: Self::Config = serde_yaml::from_str(&config_content)
-        //     .context(format!("Failed to parse settings file: {:?}", path))?;
-        let config = Self::Config::default();
+        let config: Self::Config = serde_yaml::from_str(&config_content)
+            .context(format!("Failed to parse settings file: {:?}", path))?;
+
         Ok(config)
     }
 }
