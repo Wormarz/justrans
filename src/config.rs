@@ -1,10 +1,9 @@
 use serde::{Deserialize, Serialize};
-use settings_manager::SettingsManager;
-use std::path::Path;
+use settings::Settings;
 
 /// Application configuration data
 /// This struct will be serialized/deserialized to/from YAML
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Settings)]
 pub struct ConfigData {
     /// Server configuration
     #[serde(default)]
@@ -100,60 +99,6 @@ impl Default for StorageConfig {
     }
 }
 
-impl ConfigData {
-    /// Get a reference to the server configuration
-    pub fn server(&self) -> &ServerConfig {
-        &self.server
-    }
-
-    /// Get a reference to the display configuration
-    pub fn display(&self) -> &DisplayConfig {
-        &self.display
-    }
-
-    /// Get a reference to the storage configuration
-    pub fn storage(&self) -> &StorageConfig {
-        &self.storage
-    }
-}
-
-/// Helper for managing application configuration
-pub struct ConfigManager {
-    settings: SettingsManager<ConfigData>,
-}
-
-impl ConfigManager {
-    /// Create a new configuration manager with the given settings file path
-    pub fn new<P: AsRef<Path>>(settings_path: P) -> Self {
-        ConfigManager {
-            settings: SettingsManager::new(settings_path),
-        }
-    }
-
-    /// Load the application configuration
-    pub fn load(&self) -> anyhow::Result<ConfigData> {
-        self.settings.load()
-    }
-
-    /// Save the application configuration
-    pub fn save(&self, config: &ConfigData) -> anyhow::Result<()> {
-        self.settings.save(config)
-    }
-
-    /// Get the current configuration
-    pub fn get_config(&self) -> anyhow::Result<ConfigData> {
-        self.settings.get_config()
-    }
-
-    /// Update the configuration using a closure
-    pub fn update<F>(&self, update_fn: F) -> anyhow::Result<()>
-    where
-        F: FnOnce(&mut ConfigData),
-    {
-        self.settings.update(update_fn)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,43 +116,24 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let config_path = temp_dir.path().join("test_server_config.yaml");
 
-        let config_manager = ConfigManager::new(&config_path);
-
-        // Load default config (should create file)
-        let config = config_manager.load().unwrap();
+        // Load default config using Settings trait
+        let config = ConfigData::load(&config_path).unwrap();
         assert_eq!(config.server.port, 8080);
 
-        // Modify and save config
+        // Modify and save config using Settings trait
         let mut modified_config = config.clone();
         modified_config.server.port = 9000;
-        config_manager.save(&modified_config).unwrap();
+        modified_config.save(&config_path).unwrap();
 
         // Load again and verify changes
-        let reloaded_config = config_manager.load().unwrap();
+        let reloaded_config = ConfigData::load(&config_path).unwrap();
         assert_eq!(reloaded_config.server.port, 9000);
     }
 
     #[test]
-    fn test_update_config() {
-        let temp_dir = tempdir().unwrap();
-        let config_path = temp_dir.path().join("test_update_config.yaml");
-
-        let config_manager = ConfigManager::new(&config_path);
-
-        // Load default config
-        let _ = config_manager.load().unwrap();
-
-        // Update config
-        config_manager
-            .update(|config| {
-                config.server.port = 9090;
-                config.server.upload_chunk_size_mb = 10;
-            })
-            .unwrap();
-
-        // Verify changes
-        let config = config_manager.get_config().unwrap();
-        assert_eq!(config.server.port, 9090);
-        assert_eq!(config.server.upload_chunk_size_mb, 10);
+    fn test_settings_instance() {
+        // Test that we can get the singleton instance using Settings trait
+        let instance_result = ConfigData::instance();
+        assert!(instance_result.is_ok());
     }
 }

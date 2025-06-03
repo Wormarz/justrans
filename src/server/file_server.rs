@@ -15,6 +15,7 @@ use axum::{
 };
 use local_ip_address::local_ip;
 use serde::{Deserialize, Serialize};
+use settings::Settings;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tower_http::cors::{Any, CorsLayer};
@@ -28,7 +29,6 @@ use crate::models::{FileInfo, FileList};
 pub struct AppState {
     pub file_list: Arc<Mutex<FileList>>,
     pub temp_dir: PathBuf,
-    pub config: ConfigData,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,7 +46,11 @@ pub struct FileServer {
 }
 
 impl FileServer {
-    pub fn new(config: &crate::config::ConfigData) -> anyhow::Result<Self> {
+    pub fn new() -> anyhow::Result<Self> {
+        // Get config from singleton instance
+        let instance = ConfigData::instance()?;
+        let config = instance.lock().unwrap();
+
         // Create temp directory for uploaded files
         let storage_dir = PathBuf::from(&config.storage.storage_dir);
         std::fs::create_dir_all(&storage_dir)?;
@@ -71,7 +75,6 @@ impl FileServer {
             state: AppState {
                 file_list: Arc::new(Mutex::new(FileList::new())),
                 temp_dir: storage_dir,
-                config: config.clone(),
             },
             server_info: Arc::new(Mutex::new(server_info)),
             shutdown_tx: None,
@@ -119,9 +122,11 @@ impl FileServer {
             .route("/api/config", get(get_config))
             .route(
                 "/api/upload",
-                post(upload_file).layer(axum::extract::DefaultBodyLimit::max(
-                    (self.state.config.server.upload_chunk_size_mb + 1) as usize * 1024 * 1024,
-                )),
+                post(upload_file).layer(axum::extract::DefaultBodyLimit::max({
+                    let instance = ConfigData::instance().unwrap();
+                    let config = instance.lock().unwrap();
+                    (config.server.upload_chunk_size_mb + 1) as usize * 1024 * 1024
+                })),
             )
             .nest_service("/static", static_files_service)
             .layer(TraceLayer::new_for_http())
@@ -190,9 +195,11 @@ struct ConfigResponse {
 }
 
 #[axum::debug_handler]
-async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
+async fn get_config() -> Json<ConfigResponse> {
+    let instance = ConfigData::instance().unwrap();
+    let config = instance.lock().unwrap();
     Json(ConfigResponse {
-        upload_chunk_size_mb: state.config.server.upload_chunk_size_mb,
+        upload_chunk_size_mb: config.server.upload_chunk_size_mb,
     })
 }
 

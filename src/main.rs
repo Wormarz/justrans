@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use log::{error, info};
 use qrcode::generate_qr_code_for_url;
+use settings::Settings;
 use slint::{ComponentHandle, SharedString};
 use tokio::runtime::Runtime;
 
@@ -22,24 +23,18 @@ slint::include_modules!();
 struct AppData {
     file_server: Arc<Mutex<FileServer>>,
     runtime: Arc<Runtime>,
-    config: ConfigData,
 }
 
 impl AppData {
     fn new() -> Result<Self> {
         let runtime = Arc::new(Runtime::new()?);
 
-        // Load settings using ConfigManager
-        let config_manager = config::ConfigManager::new("config/settings.yaml");
-        let config = config_manager.load()?;
-
-        // Create file server with the loaded config
-        let file_server = Arc::new(Mutex::new(FileServer::new(&config)?));
+        // Create file server (will get config from singleton instance)
+        let file_server = Arc::new(Mutex::new(FileServer::new()?));
 
         Ok(Self {
             file_server,
             runtime,
-            config,
         })
     }
 }
@@ -60,7 +55,16 @@ fn main() -> Result<()> {
     // Log some settings info
     info!(
         "Loaded settings - Server port: {}, Theme: {}",
-        app_data.config.server.port, app_data.config.display.theme
+        {
+            let instance = ConfigData::instance().unwrap();
+            let config = instance.lock().unwrap();
+            config.server.port
+        },
+        {
+            let instance = ConfigData::instance().unwrap();
+            let config = instance.lock().unwrap();
+            config.display.theme.clone()
+        }
     );
 
     // Create UI
@@ -73,13 +77,13 @@ fn main() -> Result<()> {
         ui.set_server_running(server_info.running);
         ui.set_status_message(SharedString::from("Server not running"));
 
-        // Set config values
-        ui.set_config_server_port(app_data.config.server.port as i32);
-        ui.set_config_upload_chunk_size_mb(app_data.config.server.upload_chunk_size_mb as i32);
-        ui.set_config_theme(SharedString::from(app_data.config.display.theme.clone()));
-        ui.set_config_storage_dir(SharedString::from(
-            app_data.config.storage.storage_dir.clone(),
-        ));
+        // Set config values from singleton instance
+        let instance = ConfigData::instance()?;
+        let config = instance.lock().unwrap();
+        ui.set_config_server_port(config.server.port as i32);
+        ui.set_config_upload_chunk_size_mb(config.server.upload_chunk_size_mb as i32);
+        ui.set_config_theme(SharedString::from(config.display.theme.clone()));
+        ui.set_config_storage_dir(SharedString::from(config.storage.storage_dir.clone()));
     }
 
     // Set up version information
@@ -237,38 +241,58 @@ fn main() -> Result<()> {
                 port, chunk_size, theme, storage_dir
             );
 
-            // Create config manager
-            let config_manager = config::ConfigManager::new("config/settings.yaml");
+            match ConfigData::instance() {
+                Ok(instance) => {
+                    // Get current port for comparison
+                    let current_port = {
+                        let config = instance.lock().unwrap();
+                        config.server.port
+                    };
 
-            // Update config
-            if let Err(e) = config_manager.update(|config| {
-                // Server configuration
-                config.server.port = port as u16;
-                config.server.upload_chunk_size_mb = chunk_size as u64;
+                    // Update config
+                    {
+                        let mut config = instance.lock().unwrap();
+                        config.server.port = port as u16;
+                        config.server.upload_chunk_size_mb = chunk_size as u64;
+                        config.display.theme = theme.to_string();
+                        config.storage.storage_dir = storage_dir.to_string();
 
-                // Display configuration
-                config.display.theme = theme.to_string();
+                        // Save the updated config
+                        let default_path = std::path::PathBuf::from("config/settings.yaml");
+                        if let Err(e) = config.save(&default_path) {
+                            error!("Failed to save config: {}", e);
+                            ui.set_status_message(SharedString::from(format!(
+                                "Failed to save config: {}",
+                                e
+                            )));
+                            return;
+                        }
+                    }
 
-                // Storage configuration
-                config.storage.storage_dir = storage_dir.to_string();
-            }) {
-                error!("Failed to save config: {}", e);
-                ui.set_status_message(SharedString::from(format!("Failed to save config: {}", e)));
-            } else {
-                info!("Config saved successfully");
+                    info!("Config saved successfully");
 
-                // Check if server is running and port changed
-                let server_running = {
-                    let file_server = app_data_clone.file_server.lock().unwrap();
-                    file_server.get_server_info().running
-                };
+                    // Check if server is running and port changed
+                    let server_running = {
+                        let file_server = app_data_clone.file_server.lock().unwrap();
+                        file_server.get_server_info().running
+                    };
 
-                if server_running && app_data_clone.config.server.port != port as u16 {
-                    ui.set_status_message(SharedString::from(
-                        "Configuration saved - restart server to apply port changes",
-                    ));
-                } else {
-                    ui.set_status_message(SharedString::from("Configuration saved successfully"));
+                    if server_running && current_port != port as u16 {
+                        ui.set_status_message(SharedString::from(
+                            "Configuration saved - restart server to apply port changes",
+                        ));
+                    } else {
+                        ui.set_status_message(SharedString::from(
+                            "Configuration saved successfully",
+                        ));
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to access config instance: {}", e);
+                    ui.set_status_message(SharedString::from(format!(
+                        "Failed to access config: {}",
+                        e
+                    )));
                 }
             }
         }
