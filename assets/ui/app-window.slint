@@ -10,9 +10,15 @@ struct FileInfo {
 component InfoPopup inherits Rectangle {
     callback close();
     in property <string> version: "0.1.0";
+    in property <string> theme: "light";
+    
+    property <color> bg-color: theme == "dark" ? #2b2b2b : #ffffff;
+    property <color> text-color: theme == "dark" ? #ffffff : #000000;
+    property <color> subtitle-color: theme == "dark" ? #cccccc : #333333;
+    
     width: 400px;
     height: 300px;
-    background: white;
+    background: bg-color;
     border-radius: 8px;
     drop-shadow-color: #00000088;
     drop-shadow-offset-x: 0px;
@@ -28,6 +34,7 @@ component InfoPopup inherits Rectangle {
             font-size: 24px;
             font-weight: 700;
             horizontal-alignment: center;
+            color: text-color;
         }
 
         VerticalBox {
@@ -36,23 +43,27 @@ component InfoPopup inherits Rectangle {
                 text: "JusTrans is a simple file transfer tool that allows you to easily share files between devices on the same network.";
                 wrap: word-wrap;
                 font-size: 14px;
+                color: text-color;
             }
 
             Text {
                 text: "Features:";
                 font-weight: 600;
                 font-size: 14px;
+                color: subtitle-color;
             }
 
             Text {
                 text: "• Easy file sharing via web browser\n• QR code for quick access\n• Simple and intuitive interface\n• Cross-platform support";
                 font-size: 14px;
+                color: text-color;
             }
 
             Text {
                 text: "Version: " + root.version;
                 font-size: 14px;
                 font-weight: 500;
+                color: text-color;
             }
         }
 
@@ -87,10 +98,18 @@ component ConfigDialog inherits Rectangle {
     property <int> upload-chunk-size-mb: root.initial-upload-chunk-size-mb;
     property <string> theme: root.initial-theme;
     property <string> storage-dir: root.initial-storage-dir;
+    
+    // Theme colors
+    property <color> bg-color: theme == "dark" ? #2b2b2b : #ffffff;
+    property <color> text-color: theme == "dark" ? #ffffff : #000000;
+    property <color> subtitle-color: theme == "dark" ? #cccccc : #333333;
+    property <color> theme-border-color: theme == "dark" ? #555555 : #dddddd;
+    property <color> section-border-color: theme == "dark" ? #444444 : #dddddd;
+    property <color> hint-color: theme == "dark" ? #999999 : #666666;
 
     width: 500px;
     height: 450px;
-    background: white;
+    background: bg-color;
     border-radius: 8px;
     drop-shadow-color: #00000088;
     drop-shadow-offset-x: 0px;
@@ -106,6 +125,7 @@ component ConfigDialog inherits Rectangle {
             font-size: 24px;
             font-weight: 700;
             horizontal-alignment: center;
+            color: text-color;
         }
 
         ScrollView {
@@ -119,12 +139,12 @@ component ConfigDialog inherits Rectangle {
                         text: "Server Configuration";
                         font-size: 18px;
                         font-weight: 600;
-                        color: #333;
+                        color: subtitle-color;
                     }
 
                     Rectangle {
                         height: 1px;
-                        background: #ddd;
+                        background: section-border-color;
                     }
 
                     VerticalBox {
@@ -137,6 +157,7 @@ component ConfigDialog inherits Rectangle {
                                 text: "Server Port:";
                                 font-weight: 500;
                                 font-size: 14px;
+                                color: text-color;
                             }
                             LineEdit {
                                 text: root.server-port;
@@ -149,7 +170,7 @@ component ConfigDialog inherits Rectangle {
                             Text {
                                 text: "Choose a port between 1024-65535. Default is 8080.";
                                 font-size: 12px;
-                                color: #666;
+                                color: hint-color;
                             }
                         }
 
@@ -160,6 +181,7 @@ component ConfigDialog inherits Rectangle {
                                 text: "Upload Chunk Size (MB):";
                                 font-weight: 500;
                                 font-size: 14px;
+                                color: text-color;
                             }
                             LineEdit {
                                 text: root.upload-chunk-size-mb;
@@ -172,7 +194,7 @@ component ConfigDialog inherits Rectangle {
                             Text {
                                 text: "Size of file chunks during upload. Larger values may improve performance for big files.";
                                 font-size: 12px;
-                                color: #666;
+                                color: hint-color;
                             }
                         }
                     }
@@ -185,12 +207,12 @@ component ConfigDialog inherits Rectangle {
                         text: "Display Configuration";
                         font-size: 18px;
                         font-weight: 600;
-                        color: #333;
+                        color: subtitle-color;
                     }
 
                     Rectangle {
                         height: 1px;
-                        background: #ddd;
+                        background: section-border-color;
                     }
 
                     VerticalBox {
@@ -203,6 +225,7 @@ component ConfigDialog inherits Rectangle {
                                 text: "Theme:";
                                 font-weight: 500;
                                 font-size: 14px;
+                                color: text-color;
                             }
                             ComboBox {
                                 model: ["light", "dark"];
@@ -214,7 +237,7 @@ component ConfigDialog inherits Rectangle {
                             Text {
                                 text: "Choose between light and dark theme for the application.";
                                 font-size: 12px;
-                                color: #666;
+                                color: hint-color;
                             }
                         }
                     }
@@ -227,12 +250,12 @@ component ConfigDialog inherits Rectangle {
                         text: "Storage Configuration";
                         font-size: 18px;
                         font-weight: 600;
-                        color: #333;
+                        color: subtitle-color;
                     }
 
                     Rectangle {
                         height: 1px;
-                        background: #ddd;
+                        background: section-border-color;
                     }
 
                     VerticalBox {
@@ -245,6 +268,7 @@ component ConfigDialog inherits Rectangle {
                                 text: "Storage Directory:";
                                 font-weight: 500;
                                 font-size: 14px;
+                                color: text-color;
                             }
                             LineEdit {
                                 text: root.storage-dir;
@@ -256,7 +280,7 @@ component ConfigDialog inherits Rectangle {
                             Text {
                                 text: "Directory where uploaded files will be stored.";
                                 font-size: 12px;
-                                color: #666;
+                                color: hint-color;
                             }
                         }
                     }
@@ -295,7 +319,6 @@ export component AppWindow inherits Window {
     min-height: 600px;
     max-width: 500px;
     max-height: 600px;
-    background: white;
     
     // Properties
     in-out property <string> server-url: "http://192.168.1.100:8080";
@@ -313,6 +336,18 @@ export component AppWindow inherits Window {
     in-out property <int> config-upload-chunk-size-mb: 5;
     in-out property <string> config-theme: "light";
     in-out property <string> config-storage-dir: "uploads";
+    
+    // Theme colors
+    property <color> bg-color: config-theme == "dark" ? #1e1e1e : #ffffff;
+    property <color> text-color: config-theme == "dark" ? #ffffff : #000000;
+    property <color> url-color: config-theme == "dark" ? #4dabf7 : #0066cc;
+    property <color> theme-border-color: config-theme == "dark" ? #555555 : #dddddd;
+    property <color> button-bg: config-theme == "dark" ? #404040 : #f5f5f5;
+    property <color> button-hover-bg: config-theme == "dark" ? #505050 : #e0e0e0;
+    property <color> hint-color: config-theme == "dark" ? #999999 : #888888;
+    property <color> qr-bg: config-theme == "dark" ? #2b2b2b : #ffffff;
+    
+    background: bg-color;
     
     // Callbacks
     callback start-server();
@@ -338,15 +373,16 @@ export component AppWindow inherits Window {
                 spacing: 10px;
                 Rectangle {
                     border-width: 1px;
-                    border-color: #ddd;
+                    border-color: theme-border-color;
                     border-radius: 8px;
                     horizontal-stretch: 1;
+                    background: qr-bg;
                     HorizontalBox {
                         padding: 10px;
                         Text {
                             text: root.server-url;
                             font-size: 18px;
-                            color: #0066cc;
+                            color: url-color;
                             font-weight: 500;
                             vertical-alignment: center;
                             horizontal-stretch: 1;
@@ -366,14 +402,14 @@ export component AppWindow inherits Window {
                     width: 40px;
                     height: 40px;
                     border-radius: 20px;
-                    background: #f5f5f5;
+                    background: button-bg;
                     border-width: 1px;
-                    border-color: #ddd;
+                    border-color: theme-border-color;
                     y: (parent.height - self.height) / 2;
 
                     Image {
                         source: @image-url("../img/info.svg");
-                        colorize: #62B1DF;
+                        colorize: config-theme == "dark" ? #4dabf7 : #62B1DF;
                         width: 24px;
                         height: 24px;
                         x: (parent.width - self.width) / 2;
@@ -389,7 +425,7 @@ export component AppWindow inherits Window {
 
                     states [
                         hover when root.show-info: {
-                            background: #e0e0e0;
+                            background: button-hover-bg;
                         }
                     ]
                 }
@@ -399,13 +435,14 @@ export component AppWindow inherits Window {
                     width: 40px;
                     height: 40px;
                     border-radius: 20px;
-                    background: #f5f5f5;
+                    background: button-bg;
                     border-width: 1px;
-                    border-color: #ddd;
+                    border-color: theme-border-color;
                     y: (parent.height - self.height) / 2;
 
                     Image {
                         source: @image-url("../img/settings.svg");
+                        colorize: config-theme == "dark" ? #ffffff : #000000;
                         width: 24px;
                         height: 24px;
                         x: (parent.width - self.width) / 2;
@@ -421,7 +458,7 @@ export component AppWindow inherits Window {
 
                     states [
                         hover when root.show-config: {
-                            background: #e0e0e0;
+                            background: button-hover-bg;
                         }
                     ]
                 }
@@ -432,8 +469,9 @@ export component AppWindow inherits Window {
         Rectangle {
             height: 300px;
             border-width: 1px;
-            border-color: #ddd;
+            border-color: theme-border-color;
             border-radius: 8px;
+            background: qr-bg;
             if (root.server-running): VerticalBox {
                 alignment: center;
                 Image {
@@ -445,7 +483,7 @@ export component AppWindow inherits Window {
                 alignment: center;
                 Text {
                     text: "QR Code will appear here";
-                    color: #888;
+                    color: hint-color;
                     font-size: 16px;
                     horizontal-alignment: center;
                 }
@@ -512,6 +550,7 @@ export component AppWindow inherits Window {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
             version: root.version;
+            theme: root.config-theme;
             close => {
                 root.show-info = false;
             }

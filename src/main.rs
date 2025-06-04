@@ -84,6 +84,8 @@ fn main() -> Result<()> {
         ui.set_config_upload_chunk_size_mb(config.server.upload_chunk_size_mb as i32);
         ui.set_config_theme(SharedString::from(config.display.theme.clone()));
         ui.set_config_storage_dir(SharedString::from(config.storage.storage_dir.clone()));
+
+        info!("Applied theme: {}", config.display.theme);
     }
 
     // Set up version information
@@ -269,7 +271,13 @@ fn main() -> Result<()> {
                         }
                     }
 
-                    info!("Config saved successfully");
+                    // Update UI config properties to apply theme immediately
+                    ui.set_config_server_port(port);
+                    ui.set_config_upload_chunk_size_mb(chunk_size);
+                    ui.set_config_theme(SharedString::from(theme.to_string()));
+                    ui.set_config_storage_dir(SharedString::from(storage_dir.to_string()));
+
+                    info!("Config saved successfully and theme applied");
 
                     // Check if server is running and port changed
                     let server_running = {

@@ -96,12 +96,37 @@ impl FileServer {
             return Ok(());
         }
 
+        // Get fresh config from singleton instance
+        let instance = ConfigData::instance()?;
+        let config = instance.lock().unwrap();
+
+        // Update storage directory if it changed
+        let new_storage_dir = PathBuf::from(&config.storage.storage_dir);
+        std::fs::create_dir_all(&new_storage_dir)?;
+        self.state.temp_dir = new_storage_dir;
+
+        // Get local IP address
+        let ip = match local_ip() {
+            Ok(ip) => ip.to_string(),
+            Err(_) => "127.0.0.1".to_string(),
+        };
+
+        // Get current port from settings (not cached)
+        let port = config.server.port;
+        let upload_chunk_size_mb = config.server.upload_chunk_size_mb;
+
+        // Release the config lock before continuing
+        drop(config);
+
         let app_state = self.state.clone();
         let server_info = self.server_info.clone();
 
-        // Update server info
+        // Update server info with fresh values
         {
             let mut info = server_info.lock().unwrap();
+            info.url = format!("http://{}:{}", ip, port);
+            info.ip = ip.clone();
+            info.port = port;
             info.running = true;
         }
 
@@ -114,7 +139,7 @@ impl FileServer {
             .allow_methods(Any)
             .allow_headers(Any);
 
-        // Build router
+        // Build router with fresh config values
         let app = Router::new()
             .route("/", get(serve_index))
             .route("/api/files", get(get_files))
@@ -122,25 +147,23 @@ impl FileServer {
             .route("/api/config", get(get_config))
             .route(
                 "/api/upload",
-                post(upload_file).layer(axum::extract::DefaultBodyLimit::max({
-                    let instance = ConfigData::instance().unwrap();
-                    let config = instance.lock().unwrap();
-                    (config.server.upload_chunk_size_mb + 1) as usize * 1024 * 1024
-                })),
+                post(upload_file).layer(axum::extract::DefaultBodyLimit::max(
+                    (upload_chunk_size_mb + 1) as usize * 1024 * 1024,
+                )),
             )
             .nest_service("/static", static_files_service)
             .layer(TraceLayer::new_for_http())
             .layer(cors)
             .with_state(app_state);
 
-        // Get server address with binding based on settings
-        let addr = {
-            let info = server_info.lock().unwrap();
-            let bind_address = "0.0.0.0";
-            SocketAddr::new(bind_address.parse()?, info.port)
-        };
+        // Get server address with current port
+        let addr = SocketAddr::new("0.0.0.0".parse()?, port);
 
-        log::info!("Starting server on {}", addr);
+        log::info!(
+            "Starting server on {} with storage dir: {:?}",
+            addr,
+            self.state.temp_dir
+        );
 
         // Create shutdown channel
         let (tx, rx) = oneshot::channel::<()>();
