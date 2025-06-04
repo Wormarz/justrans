@@ -197,6 +197,55 @@ impl FileServer {
             info.running = false;
         }
 
+        // Clean up uploaded files
+        log::info!("Cleaning up uploaded files...");
+
+        // Get the list of files to clean up
+        let files_to_remove = {
+            let file_list = self.state.file_list.lock().unwrap();
+            file_list.files.clone()
+        };
+
+        // Remove each uploaded file
+        let mut removed_count = 0;
+        let mut failed_count = 0;
+
+        for file_info in &files_to_remove {
+            match std::fs::remove_file(&file_info.path) {
+                Ok(_) => {
+                    log::debug!("Removed file: {:?}", file_info.path);
+                    removed_count += 1;
+                }
+                Err(e) => {
+                    log::warn!("Failed to remove file {:?}: {}", file_info.path, e);
+                    failed_count += 1;
+                }
+            }
+        }
+
+        // Clear the file list
+        {
+            let mut file_list = self.state.file_list.lock().unwrap();
+            file_list.clear();
+        }
+
+        // Try to remove the storage directory if it's empty or only contains our files
+        if let Err(e) = std::fs::remove_dir(&self.state.temp_dir) {
+            log::debug!("Storage directory not empty or failed to remove: {} (this is normal if directory contains other files)", e);
+        } else {
+            log::debug!("Removed empty storage directory: {:?}", self.state.temp_dir);
+        }
+
+        if files_to_remove.is_empty() {
+            log::info!("No uploaded files to clean up");
+        } else {
+            log::info!(
+                "File cleanup completed: {} files removed, {} failed",
+                removed_count,
+                failed_count
+            );
+        }
+
         Ok(())
     }
 }

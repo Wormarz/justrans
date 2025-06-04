@@ -27,6 +27,10 @@ impl FileList {
     pub fn get_file_by_id(&self, id: &str) -> Option<&FileInfo> {
         self.files.iter().find(|f| f.id == id)
     }
+
+    pub fn clear(&mut self) {
+        self.files.clear();
+    }
 }
 
 impl Default for FileList {
