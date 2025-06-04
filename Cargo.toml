@@ -69,5 +69,3 @@ lto = true
 
 [workspace]
 members = ["utils/qrcode", "utils/logger", "utils/settings", "utils/settings_derive"]
-
-[features]

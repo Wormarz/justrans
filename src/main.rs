@@ -1,3 +1,4 @@
+#![windows_subsystem = "windows"]
 mod config;
 mod models;
 mod server;
