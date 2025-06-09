@@ -15,6 +15,7 @@ use axum::{
 };
 use local_ip_address::local_ip;
 use serde::{Deserialize, Serialize};
+use settings::Settings;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tower_http::cors::{Any, CorsLayer};
@@ -28,7 +29,6 @@ use crate::models::{FileInfo, FileList};
 pub struct AppState {
     pub file_list: Arc<Mutex<FileList>>,
     pub temp_dir: PathBuf,
-    pub config: ConfigData,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,7 +46,11 @@ pub struct FileServer {
 }
 
 impl FileServer {
-    pub fn new(config: &crate::config::ConfigData) -> anyhow::Result<Self> {
+    pub fn new() -> anyhow::Result<Self> {
+        // Get config from singleton instance
+        let instance = ConfigData::instance()?;
+        let config = instance.lock().unwrap();
+
         // Create temp directory for uploaded files
         let storage_dir = PathBuf::from(&config.storage.storage_dir);
         std::fs::create_dir_all(&storage_dir)?;
@@ -71,7 +75,6 @@ impl FileServer {
             state: AppState {
                 file_list: Arc::new(Mutex::new(FileList::new())),
                 temp_dir: storage_dir,
-                config: config.clone(),
             },
             server_info: Arc::new(Mutex::new(server_info)),
             shutdown_tx: None,
@@ -93,12 +96,37 @@ impl FileServer {
             return Ok(());
         }
 
+        // Get fresh config from singleton instance
+        let instance = ConfigData::instance()?;
+        let config = instance.lock().unwrap();
+
+        // Update storage directory if it changed
+        let new_storage_dir = PathBuf::from(&config.storage.storage_dir);
+        std::fs::create_dir_all(&new_storage_dir)?;
+        self.state.temp_dir = new_storage_dir;
+
+        // Get local IP address
+        let ip = match local_ip() {
+            Ok(ip) => ip.to_string(),
+            Err(_) => "127.0.0.1".to_string(),
+        };
+
+        // Get current port from settings (not cached)
+        let port = config.server.port;
+        let upload_chunk_size_mb = config.server.upload_chunk_size_mb;
+
+        // Release the config lock before continuing
+        drop(config);
+
         let app_state = self.state.clone();
         let server_info = self.server_info.clone();
 
-        // Update server info
+        // Update server info with fresh values
         {
             let mut info = server_info.lock().unwrap();
+            info.url = format!("http://{}:{}", ip, port);
+            info.ip = ip.clone();
+            info.port = port;
             info.running = true;
         }
 
@@ -111,7 +139,7 @@ impl FileServer {
             .allow_methods(Any)
             .allow_headers(Any);
 
-        // Build router
+        // Build router with fresh config values
         let app = Router::new()
             .route("/", get(serve_index))
             .route("/api/files", get(get_files))
@@ -120,7 +148,7 @@ impl FileServer {
             .route(
                 "/api/upload",
                 post(upload_file).layer(axum::extract::DefaultBodyLimit::max(
-                    (self.state.config.server.upload_chunk_size_mb + 1) as usize * 1024 * 1024,
+                    (upload_chunk_size_mb + 1) as usize * 1024 * 1024,
                 )),
             )
             .nest_service("/static", static_files_service)
@@ -128,18 +156,14 @@ impl FileServer {
             .layer(cors)
             .with_state(app_state);
 
-        // Get server address with binding based on settings
-        let addr = {
-            let info = server_info.lock().unwrap();
-            let bind_address = if self.state.config.server.bind_all_interfaces {
-                "0.0.0.0"
-            } else {
-                "127.0.0.1"
-            };
-            SocketAddr::new(bind_address.parse()?, info.port)
-        };
+        // Get server address with current port
+        let addr = SocketAddr::new("0.0.0.0".parse()?, port);
 
-        log::info!("Starting server on {}", addr);
+        log::info!(
+            "Starting server on {} with storage dir: {:?}",
+            addr,
+            self.state.temp_dir
+        );
 
         // Create shutdown channel
         let (tx, rx) = oneshot::channel::<()>();
@@ -173,6 +197,55 @@ impl FileServer {
             info.running = false;
         }
 
+        // Clean up uploaded files
+        log::info!("Cleaning up uploaded files...");
+
+        // Get the list of files to clean up
+        let files_to_remove = {
+            let file_list = self.state.file_list.lock().unwrap();
+            file_list.files.clone()
+        };
+
+        // Remove each uploaded file
+        let mut removed_count = 0;
+        let mut failed_count = 0;
+
+        for file_info in &files_to_remove {
+            match std::fs::remove_file(&file_info.path) {
+                Ok(_) => {
+                    log::debug!("Removed file: {:?}", file_info.path);
+                    removed_count += 1;
+                }
+                Err(e) => {
+                    log::warn!("Failed to remove file {:?}: {}", file_info.path, e);
+                    failed_count += 1;
+                }
+            }
+        }
+
+        // Clear the file list
+        {
+            let mut file_list = self.state.file_list.lock().unwrap();
+            file_list.clear();
+        }
+
+        // Try to remove the storage directory if it's empty or only contains our files
+        if let Err(e) = std::fs::remove_dir(&self.state.temp_dir) {
+            log::debug!("Storage directory not empty or failed to remove: {} (this is normal if directory contains other files)", e);
+        } else {
+            log::debug!("Removed empty storage directory: {:?}", self.state.temp_dir);
+        }
+
+        if files_to_remove.is_empty() {
+            log::info!("No uploaded files to clean up");
+        } else {
+            log::info!(
+                "File cleanup completed: {} files removed, {} failed",
+                removed_count,
+                failed_count
+            );
+        }
+
         Ok(())
     }
 }
@@ -194,9 +267,11 @@ struct ConfigResponse {
 }
 
 #[axum::debug_handler]
-async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
+async fn get_config() -> Json<ConfigResponse> {
+    let instance = ConfigData::instance().unwrap();
+    let config = instance.lock().unwrap();
     Json(ConfigResponse {
-        upload_chunk_size_mb: state.config.server.upload_chunk_size_mb,
+        upload_chunk_size_mb: config.server.upload_chunk_size_mb,
     })
 }
 
@@ -245,7 +320,7 @@ async fn upload_file(
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<Json<FileInfo>, StatusCode> {
-    log::info!("Starting file upload processing");
+    log::debug!("Starting file upload processing");
 
     // First collect metadata from the multipart form
     let mut file_name = None;
@@ -255,19 +330,19 @@ async fn upload_file(
     let mut file_data: Option<Vec<u8>> = None;
 
     // Log all received form fields for debugging
-    log::info!("Processing multipart form data");
+    log::debug!("Processing multipart form data");
 
     // Process each field in the multipart form
     let mut field_count = 0;
     while let Ok(Some(mut field)) = multipart.next_field().await {
         field_count += 1;
         let field_name = field.name().unwrap_or("unnamed").to_string();
-        log::info!("Processing field #{}: name='{}'", field_count, field_name);
+        log::debug!("Processing field #{}: name='{}'", field_count, field_name);
 
         match field_name.as_str() {
             "file" => {
                 let original_filename = field.file_name().unwrap_or("unknown").to_string();
-                log::info!("Found file field with filename: {}", original_filename);
+                log::debug!("Found file field with filename: {}", original_filename);
                 file_name = Some(original_filename);
 
                 // Read data in smaller chunks for better memory management
@@ -275,10 +350,10 @@ async fn upload_file(
                 let mut bytes_read = 0;
 
                 // Process chunks of the file
-                log::info!("Reading file data chunks");
+                log::debug!("Reading file data chunks");
                 while let Ok(Some(chunk)) = field.chunk().await {
                     bytes_read += chunk.len();
-                    log::info!(
+                    log::debug!(
                         "Read chunk: {} bytes (total: {} bytes)",
                         chunk.len(),
                         bytes_read
@@ -287,7 +362,7 @@ async fn upload_file(
                 }
 
                 if bytes_read > 0 {
-                    log::info!("Successfully read file data: {} bytes", bytes_read);
+                    log::debug!("Successfully read file data: {} bytes", bytes_read);
                     file_data = Some(buffer);
                 } else {
                     log::error!("No data read from file field");
@@ -295,7 +370,7 @@ async fn upload_file(
             }
             "segment_index" => {
                 if let Ok(data) = field.text().await {
-                    log::info!("Found segment_index: {}", data);
+                    log::debug!("Found segment_index: {}", data);
                     match data.parse::<usize>() {
                         Ok(idx) => segment_index = Some(idx),
                         Err(e) => log::error!("Failed to parse segment_index '{}': {}", data, e),
@@ -306,7 +381,7 @@ async fn upload_file(
             }
             "total_segments" => {
                 if let Ok(data) = field.text().await {
-                    log::info!("Found total_segments: {}", data);
+                    log::debug!("Found total_segments: {}", data);
                     match data.parse::<usize>() {
                         Ok(total) => total_segments = Some(total),
                         Err(e) => log::error!("Failed to parse total_segments '{}': {}", data, e),
@@ -317,7 +392,7 @@ async fn upload_file(
             }
             "file_id" => {
                 if let Ok(data) = field.text().await {
-                    log::info!("Found file_id: {}", data);
+                    log::debug!("Found file_id: {}", data);
                     file_id = Some(data);
                 } else {
                     log::error!("Could not read file_id field as text");
@@ -328,12 +403,12 @@ async fn upload_file(
     }
 
     // Log results of field processing
-    log::info!("Processed {} fields in multipart form", field_count);
-    log::info!("file_name: {:?}", file_name);
-    log::info!("segment_index: {:?}", segment_index);
-    log::info!("total_segments: {:?}", total_segments);
-    log::info!("file_id: {:?}", file_id);
-    log::info!(
+    log::debug!("Processed {} fields in multipart form", field_count);
+    log::debug!("file_name: {:?}", file_name);
+    log::debug!("segment_index: {:?}", segment_index);
+    log::debug!("total_segments: {:?}", total_segments);
+    log::debug!("file_id: {:?}", file_id);
+    log::debug!(
         "file_data: {} bytes",
         file_data.as_ref().map_or(0, |d| d.len())
     );
@@ -351,7 +426,7 @@ async fn upload_file(
         };
 
     // Create the temporary directory for segments
-    log::info!(
+    log::debug!(
         "Creating temp directory for file segments: {:?}",
         state.temp_dir.join(&file_id)
     );
@@ -367,7 +442,7 @@ async fn upload_file(
 
     // Save the segment
     let segment_path = temp_dir.join(format!("segment_{}", segment_index));
-    log::info!("Saving segment to: {:?}", segment_path);
+    log::debug!("Saving segment to: {:?}", segment_path);
     std::fs::write(&segment_path, &file_data).map_err(|e| {
         log::error!(
             "Failed to write segment file: {:?}, error: {}",
@@ -377,7 +452,7 @@ async fn upload_file(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    log::info!(
+    log::debug!(
         "Received segment {} of {} for file '{}' (ID: {}), size: {} bytes",
         segment_index + 1,
         total_segments,
@@ -388,7 +463,7 @@ async fn upload_file(
 
     // If this is the last segment, combine all segments
     if segment_index == total_segments - 1 {
-        log::info!(
+        log::debug!(
             "Processing final segment for file '{}', combining chunks",
             file_name
         );
@@ -409,7 +484,7 @@ async fn upload_file(
 
         // Combine all segments into the final file
         let final_path = state.temp_dir.join(format!("{}_file", file_id));
-        log::info!("Creating final file: {:?}", final_path);
+        log::debug!("Creating final file: {:?}", final_path);
         let mut final_file = std::fs::File::create(&final_path).map_err(|e| {
             log::error!(
                 "Failed to create final file: {:?}, error: {}",
@@ -424,7 +499,7 @@ async fn upload_file(
         // Combine all segments
         for i in 0..total_segments {
             let segment_path = temp_dir.join(format!("segment_{}", i));
-            log::info!("Reading segment {}: {:?}", i, segment_path);
+            log::debug!("Reading segment {}: {:?}", i, segment_path);
 
             let segment_data = std::fs::read(&segment_path).map_err(|e| {
                 log::error!(
@@ -436,9 +511,9 @@ async fn upload_file(
             })?;
 
             total_size += segment_data.len() as u64;
-            log::info!("Read segment {} ({} bytes)", i, segment_data.len());
+            log::debug!("Read segment {} ({} bytes)", i, segment_data.len());
 
-            log::info!("Writing segment {} to final file", i);
+            log::debug!("Writing segment {} to final file", i);
             final_file.write_all(&segment_data).map_err(|e| {
                 log::error!(
                     "Failed to write to final file: {:?}, error: {}",
@@ -457,7 +532,7 @@ async fn upload_file(
         drop(final_file);
 
         // Clean up temporary directory
-        log::info!("Cleaning up temporary directory: {:?}", temp_dir);
+        log::debug!("Cleaning up temporary directory: {:?}", temp_dir);
         if let Err(e) = std::fs::remove_dir_all(&temp_dir) {
             log::warn!(
                 "Failed to clean up temp directory: {:?}, error: {}",
@@ -467,7 +542,7 @@ async fn upload_file(
             // Continue despite cleanup failure
         }
 
-        log::info!(
+        log::debug!(
             "File '{}' (ID: {}) successfully combined from {} segments, total size: {}",
             file_name,
             file_id,
@@ -488,7 +563,7 @@ async fn upload_file(
         {
             let mut file_list = state.file_list.lock().unwrap();
             file_list.add_file(file_info.clone());
-            log::info!(
+            log::debug!(
                 "Web upload: Added file '{}' to server file list. Total files: {}",
                 file_info.name,
                 file_list.files.len()
@@ -502,7 +577,7 @@ async fn upload_file(
         Ok(Json(file_info))
     } else {
         // Return a response indicating segment was received
-        log::info!(
+        log::debug!(
             "Successfully saved segment {} of {}",
             segment_index + 1,
             total_segments

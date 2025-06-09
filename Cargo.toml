@@ -32,7 +32,8 @@ open = "3.2.0"
 [dependencies]
 qrcode = {path = "./utils/qrcode"}
 logger = {path = "./utils/logger"}
-settings_manager = {path = "./utils/settings_manager"}
+settings = {path = "./utils/settings", features = ["derive"]}
+once_cell = "1.19.0"
 env_logger = "0.11.6"
 slint = { workspace = true, features = ["std"] }
 log.workspace = true
@@ -67,6 +68,4 @@ strip = true
 lto = true
 
 [workspace]
-members = ["utils/qrcode", "utils/logger", "utils/settings_manager"]
-
-[features]
+members = ["utils/qrcode", "utils/logger", "utils/settings", "utils/settings_derive"]
